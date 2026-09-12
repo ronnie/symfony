@@ -49,6 +49,18 @@ boundary:
     - CONTRIBUTING.md
     - .github/CODEOWNERS
     - composer.json
+    # Upstream Symfony ships agent skills in the repository: nine of them under
+    # .agents/skills, including pr-authoring, merge-up, hardening-rule and
+    # pr-review-merge-prep. These are the agent's own instructions rather than
+    # codebase content, the same category as .cursor and bin, and denying them
+    # degrades the agent without protecting anything about the code.
+    #
+    # They are also a citation source better than a code exemplar: where a skill
+    # states a rule, this manifest cites the project's own words to an agent
+    # rather than an inference from a call site. And they are the concrete
+    # version of the objection every customer raises, which is that they already
+    # have an agent file. See the composition note in ARTIFACT.md.
+    - .agents/**
   read_allow_derived_from: src/Symfony/Component/Console/composer.json#require
   # Writes are limited to the component root and its Tests directory.
   write_allow:
@@ -169,18 +181,75 @@ conventions:
     rule: >
       The branch declared in the change record must equal the base branch of the
       pull request. This check deliberately does NOT derive the maintained
-      branch set. That set is not derivable: 5.4 receives security fixes until
-      February 2029 under a sponsorship agreement, while the project's own
-      release page lists support as ended in November 2025.
+      branch set, and the reason is not that the set is undiscoverable. It is
+      published and machine readable. The reason is that the canonical source
+      exposes three overlapping keys and choosing between them is a judgement a
+      checker should not make silently.
     applies_to:
       - .change/*.yml
     check: C3
     severity: error
+    measured:
+      date: 2026-09-12
+      source_of_truth: https://symfony.com/releases.json
+      keys: >
+        supported_versions ["6.4","7.4","8.1"];
+        maintained_versions ["6.4","7.4","8.1","8.2"];
+        security_maintained_versions ["5.4"].
+        Three keys, three answers. 8.2 appears in maintained but not supported
+        because it is unreleased. 5.4 appears only in the security key.
+      what_the_project_tells_its_agents: >
+        .agents/skills/security-triage/SKILL.md line 110 instructs the agent to
+        "find the oldest version where the vulnerable code exists, intersect
+        with maintained_versions from https://symfony.com/releases.json", then
+        fix on the lowest maintained affected branch. That key excludes 5.4.
+        The same skill at line 23 defines a "public hardening" disposition as a
+        normal open PR with a changelog and no embargo.
+      corpus: >
+        50 of 300 merged pull requests target 5.4 over three weeks. 6 carry an
+        explicit Security label. A further 38 have hardening-shaped titles
+        (reject, bound, cap, escape, restrict, validate, allow-list, drop,
+        strip), classified by title pattern rather than by hand, so treat that
+        38 as an estimate. 6 are neither, including one declaring polyfills for
+        PHP 7.2, which is 5.4's floor per min_php_requirements.
+      consequence: >
+        The work landing on 5.4 is exactly the "public hardening" disposition the
+        skill defines: normal open pull requests, mostly labelled Bug rather than
+        Security, no embargo. An agent following step 2 of that skill would
+        intersect with maintained_versions, find 6.4 as the floor, and leave the
+        security maintained branch untouched. The procedure encodes less than the
+        practice: a maintainer doing this sweep knows 5.4 takes security fixes,
+        and the written instruction tells an agent it does not.
+      drift_note: >
+        Two skills restate the set in illustrative comments rather than fetching
+        it. bug-triage line 24 shows ["6.4","7.4","8.0","8.1","8.2"] and
+        sync-translations line 50 shows ["6.4","7.4","8.0","8.1"]. Neither
+        matches the live maintained_versions, which no longer contains 8.0. A
+        restated value goes stale; a fetched one does not.
+    design: >
+      C3 asserts only that the declared branch equals the actual base. The branch
+      decision itself belongs to a human and is asked for explicitly in
+      /plan-change, which cites releases.json and the three-key distinction
+      rather than picking for them. Encoding one key would reproduce the same
+      failure one layer down.
     source:
-      path: https://symfony.com/releases/5.4
-      note: >
-        The citation here is deliberately a contradiction rather than a rule.
-        It is the evidence for why the maintained set is not encoded.
+      - path: .agents/skills/security-triage/SKILL.md
+        line: 110
+        note: the documented procedure, and the key it names
+      - path: .agents/skills/security-triage/SKILL.md
+        line: 23
+        note: >
+          the public hardening disposition, which is the shape of the work
+          actually landing on 5.4
+      - path: .agents/skills/pr-review-merge-prep/SKILL.md
+        line: 19
+        note: >
+          states the branch targeting rule correctly and without naming a key:
+          bugfixes to the oldest affected maintained branch, behaviour changes
+          and features to the dev branch. Where two skills disagree this one is
+          the better statement of the rule
+      - path: https://symfony.com/releases.json
+        note: read 2026-09-12, three keys as recorded above
     verified: true
 
   - id: C4

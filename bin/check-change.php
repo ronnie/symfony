@@ -51,6 +51,11 @@ if ($schemaErrors !== []) {
     exit(2);
 }
 
+$manifestRecord = [];
+if (is_file('conventions.yml')) {
+    try { $manifestRecord = record_load('conventions.yml'); } catch (Throwable) {}
+}
+
 $component = $record['target']['component'];
 $declaredBranch = (string) $record['target']['branch'];
 $paths = $record['target']['paths'];
@@ -314,9 +319,15 @@ if ($actualBase === null) {
 // problem by reaching for a new dependency, which is the cheapest way to turn a
 // scoped change into a supply chain decision nobody reviewed.
 
+$artifactPaths = $manifestRecord['artifact_paths'] ?? [];
 $outside = [];
+$artifactTouched = [];
 foreach ($changed as $file) {
-    if ($file === $recordPath || str_starts_with($file, '.change/')) {
+    if ($file === $recordPath) {
+        continue;
+    }
+    if ($artifactPaths !== [] && path_matches_any($file, $artifactPaths)) {
+        $artifactTouched[] = $file;
         continue;
     }
     if (!path_matches_any($file, $paths)) {
@@ -339,8 +350,11 @@ foreach ($changed as $file) {
 
 if ($outside === [] && $newRequires === []) {
     $results[] = ['id' => 'C4', 'title' => 'boundary', 'status' => 'pass',
-                  'detail' => sprintf('%d changed file%s, all inside declared paths, no new dependency',
-                      count($changed), count($changed) === 1 ? '' : 's')];
+                  'detail' => sprintf('%d changed file%s inside declared paths, no new dependency, %d artifact file%s skipped',
+                      count($changed) - count($artifactTouched),
+                      count($changed) - count($artifactTouched) === 1 ? '' : 's',
+                      count($artifactTouched),
+                      count($artifactTouched) === 1 ? '' : 's')];
 } else {
     foreach ($outside as $file) {
         $violations[] = [
@@ -358,8 +372,9 @@ if ($outside === [] && $newRequires === []) {
         ];
     }
     $results[] = ['id' => 'C4', 'title' => 'boundary', 'status' => 'fail',
-                  'detail' => sprintf('%d outside declared paths, %d new dependencies',
-                      count($outside), count($newRequires))];
+                  'detail' => sprintf('%d outside declared paths, %d new dependencies, %d artifact file%s skipped',
+                      count($outside), count($newRequires), count($artifactTouched),
+                      count($artifactTouched) === 1 ? '' : 's')];
 }
 
 // ----------------------------------------------------------------------- C5

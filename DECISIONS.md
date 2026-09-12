@@ -15,20 +15,37 @@ manifest itself argues against.
 Conventions that live only in prose are unenforceable, unmaintainable, and wrong
 more often than anyone believes.
 
-Symfony proves all three at once. Its maintained branch set cannot be derived
-from the branch list, because the repository carries 7.0 through 7.2 long after
-support ended. It cannot be derived from the published release policy, because
-5.4 outlived what that policy predicts. And it is contradicted by the project's
-own release page, which lists 5.4 security support as ending November 2025 while
-a sponsorship agreement extends it to February 2029.
+Symfony is the strongest available test of that, because it has done the writing
+better than almost anyone. It ships 1656 lines of agent-readable guidance in
+nine skills under `.agents/skills`, covering triage, merging, PR authoring,
+security review and translations. `pr-authoring/SKILL.md` tells an agent to
+choose the target branch before the first commit, to check that changelog and
+upgrade entries sit in the unreleased section, and to run one component's tests
+at a time rather than the monorepo.
 
-Fifty of three hundred merged pull requests in the mined corpus target 5.4. All
-fifty are correct. A check encoding the documented policy would have failed
-every one.
+And it still does not hold. Two specific failures, both measured.
 
-**So: move convention feedback to authoring time where it costs seconds, and put
-control at the gate where it cannot be bypassed, from one source a human and an
-agent both read.**
+**The branch targeting procedure reads the wrong key.** `releases.json` is
+machine readable and exposes three overlapping keys: `supported_versions`
+`["6.4","7.4","8.1"]`, `maintained_versions` `["6.4","7.4","8.1","8.2"]`, and
+`security_maintained_versions` `["5.4"]`. `security-triage/SKILL.md:110`
+instructs the agent to intersect with `maintained_versions`, which excludes 5.4.
+In the corpus, 50 of 300 merged pull requests target 5.4: 6 labelled Security
+and a further 38 with hardening-shaped titles. That is exactly the "public
+hardening" disposition the same skill defines at line 23 as a normal open pull
+request with a changelog and no embargo. An agent following step 2 would find
+6.4 as the floor and leave the security maintained branch untouched.
+
+**Nothing tells an agent how to author a deprecation.** Every mention of
+deprecation across the nine skills treats it as something to react to:
+`bug-triage` reads `Deprecations?` from the header table to classify, `merge-up`
+handles legacy test groups and config keys a newer branch removed. In a project
+whose defining constraint is a backward compatibility promise, the authoring
+side is absent. That gap is what C1 fills.
+
+**So: prose aimed at an agent is still prose.** Move convention feedback to
+authoring time where it costs seconds, and put control at the gate where it
+cannot be bypassed, from one source a human and an agent both read.
 
 Feedback and control, not two layers of enforcement. The editor layer cannot
 block, and overstating it is the first thing a skeptic takes apart.
@@ -40,6 +57,10 @@ block, and overstating it is the first thing a skeptic takes apart.
 | What | Value | Source |
 | --- | --- | --- |
 | Corpus | 300 merged PRs, 2026-08-23 to 2026-09-11 | `mine_prs.sh`, `analyze_prs.py` |
+| Agent skills shipped by Symfony | 9 skills, 1656 lines, `.agents/skills` | `wc -l` |
+| Skills stating how to author a deprecation | 0 | grep across `.agents/skills` |
+| PRs targeting 5.4 | 50 of 300. 6 labelled Security, 38 hardening-shaped titles, 6 other | corpus, title classification |
+| `releases.json` keys | 3, disagreeing on 5.4 and 8.2 | read 2026-09-12 |
 | Files scanned by the walker | 6189 in 0.9s, zero tokenize failures | `bin/survey.php` |
 | Deprecation pull requests | 13 of 293 with a parseable header, 4.4% | corpus section 3 |
 | C1 pairing | 15 of 15, one excluded as `@internal` | `bin/survey.php` section 2 |
@@ -78,6 +99,13 @@ remainder will not cluster into objection classes. Symfony reviewers write
 bespoke design discussion. Conventions came from repository artifacts instead,
 which is a better source because it is citable.
 
+**"The maintained set is not derivable."** Mine, and wrong. It is published at
+`releases.json` and Symfony's own skills instruct agents to fetch it. The error
+came from reasoning off the HTML release page and the branch list without
+checking for a machine readable endpoint. The corrected finding is stronger than
+the one it replaced, and it arrived by reading the repository's own agent
+guidance rather than by reasoning harder.
+
 **Maintainer absorption.** Attractive and unsupported. One person wrote 66.6% of
 comments and also opened 178 of the 300 pull requests, so the concentration is
 authorship rather than correction work.
@@ -110,7 +138,9 @@ context natively. Enforcement of writes belongs in CI.
 | `PhpToken::tokenize` over a parser package | A parser dependency needs a require entry, which is what C4 fails on. The tooling would trip its own gate |
 | C1 methods only | A deprecated class or interface has no body to hold the call. Demanding one fires on correct code |
 | `@internal` excluded from C1 | `@internal` means no caller outside the component can reach it. The user-facing deprecation is declared where the caller is: `HttpKernelExtension.php:30` uses `DeprecatedCallableInfo('symfony/twig-bridge', '8.2', ...)` for exactly this method |
-| C3 checks self-consistency only | The maintained set is not derivable. See the claim above |
+| C3 checks self-consistency only | The set is derivable, and the canonical source exposes three overlapping keys. Choosing between them is a judgement a checker should not make silently, and Symfony's own security skill names the key that excludes 5.4. The branch decision goes to a human in `/plan-change`; C3 asserts only that the declaration matches the base |
+| `.agents/**` inside the read boundary | Upstream Symfony ships nine agent skills in the repository. They are the agent's own instructions rather than codebase content, the same category as `.cursor` and `bin`, and denying them degrades the agent without protecting the code. Added after the agent was denied them and asked, which is the maintenance loop working once for real |
+| Two checks enforce documented rules rather than new ones | C2 is stated in `pr-authoring` and `security-triage`; C3's rule is stated correctly in `pr-review-merge-prep:19`. Enforcing what a project already says is a stronger position than asserting something new, and it is the answer to "we already have an agent file" |
 | Package and version folded into C1 rather than a separate check | 86.9% monorepo-wide looks weak and is strong inside a component: every mismatch read was a bridge or bundle deprecating for a package it wraps, or a test fixture. Scoping to a diff confined by C4 removes all of them |
 | Empty package and version allowed | Symfony uses it when reporting a deprecation about third-party code it does not own. `ContainerBuilder.php:1206` and `:1223` |
 | Read boundary as the primary editor control | The only file hook with a working deny channel |
@@ -155,6 +185,12 @@ context natively. Enforcement of writes belongs in CI.
   `git ls-files --others --exclude-standard` to the changed file set.
 - C3 compares the declared branch against the pull request base, so outside a
   pull request there is nothing to compare and it skips. C3 is a CI only check.
+- Two of Symfony's own skills restate the maintained set in illustrative
+  comments rather than fetching it: `bug-triage:24` and `sync-translations:50`
+  both show arrays containing 8.0, which is no longer in the live
+  `maintained_versions`. Illustrative rather than executed, so the drift is
+  harmless today, and it is the same failure mode this manifest guards against.
+  Any value restated in prose goes stale; a fetched one does not.
 - The change record reader falls back to a constrained YAML parser when the
   autoloader is absent. It has diverged from Symfony's component twice, on
   inline comments and on backslash escapes. It should be deleted.
