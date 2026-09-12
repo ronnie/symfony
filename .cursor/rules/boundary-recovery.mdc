@@ -1,0 +1,42 @@
+---
+description: What to do when a hook denies an action
+alwaysApply: true
+---
+
+# When a hook denies an action
+
+A denied read or shell command is the boundary working, not the tool failing.
+
+## Do
+
+- Say which path or command was denied, in one line.
+- Ask whether the boundary should be widened, and why you need that path.
+- Continue with what you can do inside the boundary.
+
+## Do not
+
+- Retry the same action.
+- Look for another route to the same file: a different tool, a shell command, a
+  relative path, a symlink, or a search that returns the contents.
+- Edit `.cursor/hooks.json` or `conventions.yml` to remove the restriction.
+- Assume the file's contents and proceed as if you had read it.
+
+Widening the boundary is the user's decision and it is recorded in
+`target.paths` of the change record, because C4 checks the diff against that
+list and a boundary widened only in conversation is not a boundary.
+
+# What the editor layer does and does not do
+
+Hooks cannot block a file edit. There is no pre-edit hook, and the post-edit
+hook cannot return anything to you. So nothing stops you writing outside the
+boundary, and writing outside it still fails the gate.
+
+After any edit, run:
+
+```bash
+php bin/check-change.php .change/<record>.yml --format=json
+```
+
+Read the `violations` array and apply each `fix`. That output is the feedback
+channel. Waiting to be told what is wrong is waiting for something that will
+not arrive.

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeReadFile": [
+      { "command": "php bin/hook-guard.php read" }
+    ],
+    "beforeShellExecution": [
+      { "command": "php bin/hook-guard.php shell" }
+    ]
+  }
+}

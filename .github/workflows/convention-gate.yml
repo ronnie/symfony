@@ -1,0 +1,119 @@
+name: convention gate
+
+# NOT to be confused with conventions.yml at the repository root. That file is
+# the convention manifest read by bin/hook-guard.php and bin/check-change.php.
+# This file is a GitHub Actions workflow. Same subject, different kind of thing.
+
+on:
+  pull_request:
+    branches: [ '*' ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  gate:
+    name: gate (php ${{ matrix.php }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # 8.4 is the declared minimum for this branch. 8.5 is what the author
+        # runs locally, and editor and pipeline disagreeing is the failure this
+        # whole artifact exists to prevent. Upstream also tests 8.6, which is
+        # unreleased; a token walker is exactly the tool that breaks on new
+        # syntax, so carrying an unreleased runtime buys nothing here.
+        php: [ '8.4', '8.5' ]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '${{ matrix.php }}'
+          extensions: intl, mbstring
+          coverage: none
+
+      - name: Sanity check the artifact layout
+        # conventions.yml living in bin/ meant hook-guard.php silently fell back
+        # to hardcoded defaults, and every output looked correct. Fail loudly
+        # here rather than let CI pass on a boundary nobody declared.
+        run: |
+          test -f conventions.yml || {
+            echo "conventions.yml must be at the repository root, not in bin/." >&2
+            exit 1
+          }
+          php -l bin/check-change.php
+          php -l bin/hook-guard.php
+          php bin/selftest.php
+
+      - name: Locate the change record
+        id: record
+        run: |
+          file=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- '.change/*.yml' | head -1)
+          if [ -z "$file" ]; then
+            echo "No change record in this pull request." >&2
+            echo "Every change carries one. Run /plan-change." >&2
+            exit 1
+          fi
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+          echo "Using $file"
+
+      - name: Install dependencies
+        # Default resolution only. Lowest allowed dependencies pull in older
+        # Symfony versions that emit their own deprecations, and the helper
+        # cannot separate those from the one under test.
+        run: composer install --no-interaction --no-progress
+
+      - name: Gate, before tests
+        # C1 through C4 in full. C5 verifies the named tests exist but cannot
+        # yet confirm they ran.
+        run: php bin/check-change.php "${{ steps.record.outputs.file }}" --base "origin/${{ github.base_ref }}"
+
+      - name: Component test suite
+        env:
+          SYMFONY_DEPRECATIONS_HELPER: max[self]=0
+        # One exclusion, by name rather than by file or group, so any other
+        # failure still surfaces and the exclusion cannot hide a regression.
+        #
+        # InvokableCommandTest::testAskWithVariadicInputFilesCollectsAndStacks
+        # errors on a clean checkout with MissingInputException from
+        # QuestionHelper. FileInputHelper reads the stream in chunks via fread,
+        # so the first read consumes input intended for the second and third
+        # prompts, which then find it empty and abort. The test arrived with the
+        # paste detection feature on 2026-08-13 and is unrelated to any change
+        # this gate guards.
+        run: |
+          mkdir -p build
+          ./phpunit src/Symfony/Component/Console \
+            --filter '/^(?!.*testAskWithVariadicInputFilesCollectsAndStacks).*$/' \
+            --log-junit build/junit.xml
+
+      - name: Gate, after tests
+        id: gate
+        env:
+          JUNIT_XML: build/junit.xml
+        # Same script, same manifest, same logic as the local run. C5 now
+        # verifies execution rather than existence, which is the difference
+        # between a change record that documents intent and one that is
+        # enforced.
+        run: |
+          php bin/check-change.php "${{ steps.record.outputs.file }}" \
+            --base "origin/${{ github.base_ref }}" --format=json | tee build/gate.json
+          php bin/check-change.php "${{ steps.record.outputs.file }}" \
+            --base "origin/${{ github.base_ref }}"
+
+      - name: Summary comment
+        if: always() && matrix.php == '8.5'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # One sticky comment updated in place. Three separate comments would
+        # duplicate on every rerun and triple the notification volume, and the
+        # per role subscription people imagine as the benefit does not exist.
+        run: |
+          php bin/pr-comment.php build/gate.json "${{ steps.record.outputs.file }}" > build/comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file build/comment.md --edit-last --create-if-none

@@ -1,0 +1,218 @@
+# Convention manifest. Single source of truth for the Cursor rule layer,
+# the local checker, and the CI gate.
+#
+# Every record MUST carry a `source` citing the file in this repository the
+# convention was derived from, and a `verified` flag. A record with
+# verified: false has not been confirmed against the repo yet and must not be
+# quoted as an established convention.
+#
+# `scope` owners are never written here. They resolve from .github/CODEOWNERS
+# at run time, most specific matching path wins.
+
+version: 1
+
+scope:
+  component: Console
+  root: src/Symfony/Component/Console
+  owners_from: .github/CODEOWNERS
+  # Resolution is live. As of 2026-09-11 this yields @chalasr for the component
+  # and @dunglas for Logger/ConsoleLogger.php, which is the nested case that
+  # proves most-specific-match is doing real work.
+
+# Paths belonging to the enforcement artifact itself. C4 skips these and prints
+# how many it skipped, so the exemption is visible on every run rather than
+# implied. This is not a per-change escape hatch: it is a fixed enumeration of
+# the tooling's own footprint, and a change that edits the tooling should say so
+# in its own change record.
+#
+# It exists because DECISIONS.md tripped C4 in lab 12. That was correct
+# behaviour: nothing had told the gate that the artifact's own documentation is
+# infrastructure rather than a change reaching outside its boundary.
+artifact_paths:
+  - bin/**
+  - .cursor/**
+  - .change/**
+  - conventions.yml
+  - DECISIONS.md
+  - .github/workflows/convention-gate.yml
+
+boundary:
+  # Paths the agent may read. Everything else is denied by beforeReadFile.
+  # Derived, not typed by hand: the component root, whatever the component's own
+  # composer.json requires that resolves under src/Symfony, plus contributing docs.
+  # The declared base. hook-guard.php reads this list, adds artifact_paths, then
+  # adds whatever the component's own composer.json require block resolves to
+  # inside the monorepo. Nothing is hardcoded in the script: a missing manifest
+  # is a denial, not a default.
+  read_allow:
+    - src/Symfony/Component/Console/**
+    - CONTRIBUTING.md
+    - .github/CODEOWNERS
+    - composer.json
+  read_allow_derived_from: src/Symfony/Component/Console/composer.json#require
+  # Writes are limited to the component root and its Tests directory.
+  write_allow:
+    - src/Symfony/Component/Console/**
+
+conventions:
+
+  - id: C1
+    title: A deprecated symbol declares its deprecation where the caller is
+    rule: >
+      A method annotated @deprecated in its docblock must call
+      trigger_deprecation() inside its own body. The first argument must be the
+      owning component's composer package name and the second must be the
+      version declared in the change record. A symbol annotated @internal is
+      exempt, because @internal marks a symbol no caller outside the component
+      can reach, and its user facing deprecation is declared at the boundary the
+      caller actually touches.
+    assertions:
+      - id: C1.pairing
+        text: "@deprecated method, not @internal, calls trigger_deprecation in its body"
+      - id: C1.package
+        text: first argument equals the owning component's composer name
+      - id: C1.version
+        text: second argument equals target.branch from the change record
+    applies_to:
+      - src/Symfony/Component/Console/**/*.php
+    excludes:
+      - src/Symfony/Component/Console/Tests/**
+    check: C1
+    severity: error
+    exceptions:
+      - "@internal symbols, per the boundary rule above"
+      - >
+        an empty package and version pair, which Symfony uses when reporting a
+        deprecation about third party code it does not own. See
+        ContainerBuilder.php lines 1206 and 1223, where a user service
+        depending on a deprecated class is reported with no owning package.
+      - >
+        bridges and bundles deprecating on behalf of a package they wrap, which
+        is why C1.package runs against a diff scoped to one component rather
+        than across the tree. NotifierHandler in the Monolog bridge correctly
+        names symfony/notifier, and MessengerBundle correctly names
+        symfony/framework-bundle.
+    measured:
+      date: 2026-09-11
+      corpus: src/Symfony on branch 8.2, 6189 php files, Tests excluded
+      pairing: >
+        16 methods and functions carry @deprecated with a body. 15 call
+        trigger_deprecation. The single exception is
+        Bridge/Twig/Extension/HttpKernelRuntime.php:54
+        renderHIncludeFragment(), which is @internal and whose user facing
+        deprecation is declared in HttpKernelExtension via
+        DeprecatedCallableInfo('symfony/twig-bridge', '8.2', ...). With the
+        @internal exclusion applied the rate is 15 of 15.
+      package: 119 of 137 literal calls name the owning composer package
+      blind_spot: >
+        Of 52 @deprecated annotations found, 32 are on classes or interfaces and
+        2 are on properties. Those declarations have no body to hold the call,
+        so C1 cannot check roughly two thirds of the annotations in this
+        framework. The checker prints what it skipped on every run.
+      known_gap: >
+        PHP 8.4 property hooks give properties a body, so the reasoning above is
+        eroding under the language rather than under the codebase. A deprecated
+        property with a get or set hook could hold a trigger_deprecation call
+        and C1 would not look for it. One instance exists today at
+        HttpKernel/Event/ViewEvent.php:30. Revisit when hooked properties become
+        common, and treat this entry as the example of why a convention manifest
+        needs an owner rather than a one time author.
+      note: >
+        n is 16. Quote the count, never the percentage. One additional unpaired
+        case would move the rate below 90.
+    source:
+      - path: src/Symfony/Bridge/Twig/Extension/HttpKernelRuntime.php
+        line: 54
+        note: the @internal exclusion, and the reason for it
+      - path: src/Symfony/Bridge/Twig/Extension/HttpKernelExtension.php
+        line: 30
+        note: >
+          the same deprecation declared at the caller boundary, with package,
+          version and replacement in the same shape as trigger_deprecation
+      - path: src/Symfony/Component/Console/Input/InputOption.php
+        line: 116
+        note: >
+          call shape and package string, in the target component. This is a
+          behavioural deprecation of a calling pattern rather than a symbol
+          deprecation, so it cites C1.package and C1.version but not C1.pairing.
+          Console carries no @deprecated annotation anywhere, which is the
+          reason this convention has to be delivered to the engineer rather than
+          copied from a neighbouring file.
+      - path: src/Symfony/Component/DependencyInjection/ContainerBuilder.php
+        line: 1205
+        note: >
+          Symfony itself detects this convention by scanning docblocks for
+          @deprecated at container compile time. The checker does the same thing
+          earlier.
+    verified: true
+
+  - id: C2
+    title: A deprecation carries a changelog entry
+    rule: >
+      Any change introducing a deprecation must add an entry to the owning
+      component's CHANGELOG.md under the heading for the version declared in the
+      change record.
+    applies_to:
+      - src/Symfony/Component/Console/**
+    check: C2
+    severity: error
+    source:
+      path: src/Symfony/Component/Console/CHANGELOG.md
+      note: >
+        File confirmed present. Heading format NOT confirmed. The checker
+        currently reports the headings it found so the format can be pinned
+        after reading the file once.
+    verified: false
+
+  - id: C3
+    title: The declared branch matches the pull request base
+    rule: >
+      The branch declared in the change record must equal the base branch of the
+      pull request. This check deliberately does NOT derive the maintained
+      branch set. That set is not derivable: 5.4 receives security fixes until
+      February 2029 under a sponsorship agreement, while the project's own
+      release page lists support as ended in November 2025.
+    applies_to:
+      - .change/*.yml
+    check: C3
+    severity: error
+    source:
+      path: https://symfony.com/releases/5.4
+      note: >
+        The citation here is deliberately a contradiction rather than a rule.
+        It is the evidence for why the maintained set is not encoded.
+    verified: true
+
+  - id: C4
+    title: A change stays inside its declared paths
+    rule: >
+      The diff may touch only paths declared in the change record, and may not
+      add a require entry to any composer.json.
+    applies_to:
+      - "**"
+    check: C4
+    severity: error
+    source:
+      path: src/Symfony/Component/Console/composer.json
+      note: >
+        Component boundaries are real in this repository: each component
+        declares its own dependencies and cross-component reach is a review
+        objection. Confirm by reading the require block.
+    verified: false
+
+  - id: C5
+    title: Every acceptance criterion names a test that ran
+    rule: >
+      Each acceptance criterion in the change record must name a test method
+      that exists and executed in this run.
+    applies_to:
+      - .change/*.yml
+    check: C5
+    severity: error
+    source:
+      path: src/Symfony/Component/Console/Tests/Input/InputOptionTest.php
+      note: >
+        Deprecation assertion exemplar. Uses expectUserDeprecationMessage,
+        which is the current API at 52 files across src/Symfony against 9 for
+        the legacy ExpectDeprecationTrait.
+    verified: true
