@@ -13,6 +13,11 @@ target:
   branch: "8.2"
   paths:
     - "src/Symfony/Component/Console/**"
+    # The pull request template requires an upgrade entry for a deprecation, so
+    # a deprecation's scope is the component plus the upgrade file for the
+    # target branch. C2 demands this file and C4 forbids anything undeclared,
+    # so the record has to name it or the two checks contradict each other.
+    - "UPGRADE-8.2.md"
 
 owner: "@chalasr"                 # resolved from .github/CODEOWNERS, not typed
 
