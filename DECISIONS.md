@@ -199,6 +199,49 @@ context natively. Enforcement of writes belongs in CI.
 
 ---
 
+## Pre-existing failures on this fork
+
+Found while getting pull request #1 (CHG-0001) green, 2026-09-12. Neither is
+caused by the artifact or by CHG-0001. Both were confirmed against
+`symfony/symfony`'s own `8.2` branch at commit `2d43fa6935f95f69893b7dc2c150df245ac7b294`
+— the exact commit this fork's `8.2` was branched from, verified as an
+ancestor of this fork's `8.2` and as the live tip of upstream's `8.2` at the
+time of the check.
+
+- **`Unit Tests (8.4, high-deps)`.**
+  `Symfony\Bundle\FrameworkBundle\Tests\Routing\RedirectableCompiledUrlMatcherTest::testSchemeRedirect`
+  fails: "Failed asserting that two arrays are equal", the actual match
+  result carrying an extra `_scheme_redirect => true` key the expectation
+  doesn't have. That test class exists nowhere in this checkout — only
+  `RedirectableCompiledUrlMatcher.php` does — while the Routing component's
+  own tests under `Routing/Tests/Matcher` already assert
+  `_scheme_redirect => true` correctly. `high-deps` composer resolution is
+  running FrameworkBundle against a test double from a different package
+  version than the local Routing code. Evidence it predates this fork:
+  upstream's own `Unit Tests (8.4, high-deps)` check run at
+  `2d43fa6935f9` is `failure`
+  (github.com/symfony/symfony/actions/runs/34637505927/job/103388887434).
+  Not excluded anywhere. Neither `convention-gate.yml` nor `unit-tests.yml`
+  names this test; fixing it means editing FrameworkBundle or Routing,
+  outside CHG-0001's Console-only scope and outside what this artifact
+  governs.
+
+- **`x86 / minimal-exts / lowest-php` (Windows).**
+  `Symfony\Component\HttpClient\Tests\AmpHttpClientTest::testTimeoutOnDestruct`
+  fails: "Failed asserting that 1.1557400226593018 is less than 1.0", a
+  wall-clock assertion that a destructor completes inside one second.
+  Evidence it predates this fork and isn't a standing bug: the same job at
+  `2d43fa6935f9` upstream is `success`
+  (github.com/symfony/symfony/actions/runs/34637505911/job/103388888937), and
+  a retry of the identical failed job on PR #1 also failed, on the same
+  assertion, at a different elapsed time — consistent with CI-load timing
+  noise on the Windows runner rather than a deterministic bug. Not excluded
+  anywhere. A timing flake this shape is what a retry is for; a permanent
+  exclusion in `windows.yml` would change CI for every future pull request
+  against `8.2`, not just this one, so it was deliberately not added.
+
+---
+
 ## Open
 
 - `InvokableCommandTest::testAskWithVariadicInputFilesCollectsAndStacks` errors

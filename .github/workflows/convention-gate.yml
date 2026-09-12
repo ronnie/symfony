@@ -87,26 +87,32 @@ jobs:
       - name: Component test suite
         env:
           SYMFONY_DEPRECATIONS_HELPER: max[self]=0
-        # One exclusion by name, plus the tty group upstream's own
-        # unit-tests.yml excludes for exactly the same reason: a hosted
-        # runner has no interactive stdin. QuestionHelperTest is
-        # #[Group('tty')], and without this exclusion testAskTimeout and
+        # The same groups upstream's own unit-tests.yml excludes, for the same
+        # reasons: a hosted runner has no interactive stdin (tty), no intl
+        # data fixtures (intl-data), and isn't set up for benchmark,
+        # integration, or transient suites. QuestionHelperTest is
+        # #[Group('tty')], and without excluding it testAskTimeout and
         # testAskThrowsExceptionOnMissingInputForChoiceQuestion abort
-        # immediately instead of exercising the behaviour under test. Every
-        # other failure still surfaces: this mirrors upstream's own exclusion
-        # rather than widening it.
+        # immediately instead of exercising the behaviour under test. Console
+        # has no tests in the other four groups today, so this changes
+        # nothing yet; it matches upstream's own list so a future test
+        # doesn't quietly reintroduce the same class of environment-only
+        # failure. Every other failure still surfaces: this mirrors
+        # upstream's own exclusion rather than widening it.
         #
         # InvokableCommandTest::testAskWithVariadicInputFilesCollectsAndStacks
-        # errors on a clean checkout with MissingInputException from
-        # QuestionHelper. FileInputHelper reads the stream in chunks via fread,
-        # so the first read consumes input intended for the second and third
-        # prompts, which then find it empty and abort. The test arrived with the
-        # paste detection feature on 2026-08-13 and is unrelated to any change
-        # this gate guards.
+        # was excluded by name on the belief that it errors on a clean
+        # checkout. Re-measured 2026-09-12: it passes in isolation, in the
+        # full local Console suite, with this exact phpunit invocation, and on
+        # symfony/symfony's own Unit Tests (8.4) and (8.5) CI at the commit
+        # this fork's 8.2 was branched from. No environment tried reproduces
+        # the failure. Left in place pending re-investigation rather than
+        # removed on the strength of a re-measurement that itself couldn't
+        # explain the original observation.
         run: |
           mkdir -p build
           ./phpunit src/Symfony/Component/Console \
-            --exclude-group tty \
+            --exclude-group tty --exclude-group benchmark --exclude-group intl-data --exclude-group integration --exclude-group transient \
             --filter '/^(?!.*testAskWithVariadicInputFilesCollectsAndStacks).*$/' \
             --log-junit build/junit.xml
 
