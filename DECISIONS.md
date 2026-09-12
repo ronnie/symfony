@@ -215,16 +215,28 @@ time of the check.
   doesn't have. That test class exists nowhere in this checkout — only
   `RedirectableCompiledUrlMatcher.php` does — while the Routing component's
   own tests under `Routing/Tests/Matcher` already assert
-  `_scheme_redirect => true` correctly. `high-deps` composer resolution is
-  running FrameworkBundle against a test double from a different package
-  version than the local Routing code. Evidence it predates this fork:
-  upstream's own `Unit Tests (8.4, high-deps)` check run at
-  `2d43fa6935f9` is `failure`
+  `_scheme_redirect => true` correctly. Not a code regression: the `Routing`
+  and `FrameworkBundle` source is byte-identical between upstream PR #66025's
+  commit and `2d43fa6935f9` (`git diff`, empty). It is `high-deps` composer
+  resolution drifting over time. Timestamped evidence: PR #66025's own
+  `Unit Tests (8.4, high-deps)` check ran 2026-09-11 17:58:24–18:03:55 UTC
+  and passed
+  (github.com/symfony/symfony/actions/runs/34630658335/job/103366392072).
+  `2d43fa6935f9` — an unrelated commit, #66020's Console `LockableTrait`
+  change, touching neither `Routing` nor `FrameworkBundle` — ran the same
+  check 2026-09-11 19:11:49–19:17:50 UTC, about 70 minutes later, and
+  failed on this exact assertion
   (github.com/symfony/symfony/actions/runs/34637505927/job/103388887434).
-  Not excluded anywhere. Neither `convention-gate.yml` nor `unit-tests.yml`
-  names this test; fixing it means editing FrameworkBundle or Routing,
-  outside CHG-0001's Console-only scope and outside what this artifact
-  governs.
+  Something published to Packagist in that window shifted what `high-deps`
+  resolves; the git commit checked out is incidental. Rebasing onto an
+  earlier passing commit would not help, since a run today resolves against
+  today's Packagist state regardless of which commit is checked out, and a
+  composer constraint forcing a different resolution would mean editing
+  `FrameworkBundle` or `Routing` `composer.json` — outside CHG-0001's
+  Console-only scope, outside what this artifact governs, and it would mask
+  the symptom rather than fix the stale upstream test. Not excluded
+  anywhere; neither `convention-gate.yml` nor `unit-tests.yml` names this
+  test.
 
 - **`x86 / minimal-exts / lowest-php` (Windows).**
   `Symfony\Component\HttpClient\Tests\AmpHttpClientTest::testTimeoutOnDestruct`
