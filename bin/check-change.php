@@ -249,13 +249,53 @@ if (!$declaresDeprecation) {
 } else {
     $addedText = git_added_text($base, $changelog);
     $mentions = array_filter($addedText, fn($l) => preg_match('/deprecat/i', $l));
+
+    // Symfony uses setext headings in component changelogs: the version on one
+    // line, dashes underneath. An ATX pattern finds nothing here, which is why
+    // this check reported an empty heading list and passed on the mention alone.
+    //
+    //   CHANGELOG
+    //   =========
+    //
+    //   8.2
+    //   ---
+    //
+    //    * Add ...
+    //
+    // Read the file, find the line range belonging to the declared version, and
+    // require the added lines to fall inside it. An entry under the wrong
+    // version reaches the wrong release notes, which is the failure C2 exists
+    // to prevent.
+    $lines = is_file($changelog) ? file($changelog, FILE_IGNORE_NEW_LINES) : [];
     $headings = [];
-    if (is_file($changelog)) {
-        foreach (file($changelog, FILE_IGNORE_NEW_LINES) as $l) {
-            if (preg_match('/^\s*#{1,3}\s*(.+)$/', $l, $m)) { $headings[] = trim($m[1]); }
+    foreach ($lines as $i => $line) {
+        $next = $lines[$i + 1] ?? '';
+        $isSetext = preg_match('/^-{3,}\s*$/', $next) || preg_match('/^={3,}\s*$/', $next);
+        if ($isSetext && preg_match('/^\s*(\S+)\s*$/', $line, $m)) {
+            $headings[] = ['name' => $m[1], 'line' => $i + 1];
+            continue;
+        }
+        if (preg_match('/^\s*#{1,3}\s*(\S+)/', $line, $m)) {
+            $headings[] = ['name' => $m[1], 'line' => $i + 1];
         }
     }
-    $hasHeading = in_array($declaredBranch, $headings, true);
+
+    $sectionStart = null;
+    $sectionEnd = count($lines);
+    foreach ($headings as $n => $h) {
+        if ($h['name'] === $declaredBranch) {
+            $sectionStart = $h['line'];
+            $sectionEnd = $headings[$n + 1]['line'] ?? count($lines);
+            break;
+        }
+    }
+
+    $addedLines = git_added_lines($base, $changelog);
+    $inSection = $sectionStart === null
+        ? []
+        : array_filter($addedLines, fn($l) => $l > $sectionStart && $l < $sectionEnd);
+
+    $versionNames = array_column($headings, 'name');
 
     if ($mentions === []) {
         $violations[] = [
@@ -265,16 +305,33 @@ if (!$declaresDeprecation) {
         ];
         $results[] = ['id' => 'C2', 'title' => 'changelog entry', 'status' => 'fail',
                       'detail' => 'no deprecation wording in added lines'];
+    } elseif ($sectionStart === null) {
+        $violations[] = [
+            'check' => 'C2', 'path' => $changelog, 'line' => null,
+            'message' => sprintf('No "%s" heading in the changelog. Found: %s.',
+                $declaredBranch, implode(', ', array_slice($versionNames, 0, 6))),
+            'fix' => sprintf('Add a %s section, or correct target.branch in the change record.', $declaredBranch),
+        ];
+        $results[] = ['id' => 'C2', 'title' => 'changelog entry', 'status' => 'fail',
+                      'detail' => sprintf('no %s section', $declaredBranch)];
+    } elseif ($inSection === []) {
+        $violations[] = [
+            'check' => 'C2', 'path' => $changelog, 'line' => $addedLines[0] ?? null,
+            'message' => sprintf(
+                'The entry mentions a deprecation but sits outside the %s section, which spans lines %d to %d.',
+                $declaredBranch, $sectionStart, $sectionEnd
+            ),
+            'fix' => sprintf('Move the entry under the %s heading. An entry under the wrong version reaches the wrong release notes.', $declaredBranch),
+        ];
+        $results[] = ['id' => 'C2', 'title' => 'changelog entry', 'status' => 'fail',
+                      'detail' => sprintf('entry outside the %s section', $declaredBranch)];
     } else {
         $results[] = [
             'id' => 'C2', 'title' => 'changelog entry', 'status' => 'pass',
-            'detail' => sprintf(
-                '%d added line%s mention a deprecation. Heading "%s" %s. VERIFY heading format: found [%s]',
-                count($mentions), count($mentions) === 1 ? '' : 's',
-                $declaredBranch,
-                $hasHeading ? 'present' : 'NOT found',
-                implode(', ', array_slice($headings, 0, 4))
-            ),
+            'detail' => sprintf('%d line%s under "%s" (lines %d to %d), %d version%s in file',
+                count($inSection), count($inSection) === 1 ? '' : 's',
+                $declaredBranch, $sectionStart, $sectionEnd,
+                count($headings), count($headings) === 1 ? '' : 's'),
         ];
     }
 }
@@ -456,8 +513,14 @@ if ($format === 'json') {
 
 printf("%s  %s  %s  targets %s\n", $record['id'] ?? '?', $record['change_type'], $component, $declaredBranch);
 printf("owner %s  from %s\n", implode(' ', $owner['owners']) ?: '(none)', $owner['pattern'] ?? 'no match');
-printf("base %s  record read via %s  %d changed file%s in scope\n\n",
+$srcCounts = git_change_sources($base);
+printf("base %s  record read via %s  %d changed file%s in scope\n",
     $base, $reader, count($phpFiles), count($phpFiles) === 1 ? '' : 's');
+printf("diff: %d committed, %d uncommitted%s\n\n",
+    $srcCounts['committed'], $srcCounts['uncommitted'],
+    $srcCounts['uncommitted'] > 0
+        ? '  (CI sees only what is committed, so commit before trusting a green gate)'
+        : '');
 
 foreach ($results as $r) {
     printf("%-4s %-22s %-5s %s\n", $r['id'], $r['title'], strtoupper($r['status']), $r['detail']);
