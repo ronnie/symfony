@@ -78,6 +78,7 @@ class InputOptionTest extends TestCase
         $this->assertSame('0|z', $option->getShortcut(), '-0 is an acceptable shortcut value when embedded in a string-list');
     }
 
+    #[IgnoreDeprecations]
     public function testModes()
     {
         $option = new InputOption('foo', 'f');
@@ -128,6 +129,40 @@ class InputOptionTest extends TestCase
         $this->assertFalse($option->isValueOptional(), '__construct() can take "InputOption::HIDDEN" as its mode');
         $this->assertFalse($option->isDeprecated(), '__construct() can take "InputOption::HIDDEN" as its mode');
         $this->assertTrue($option->isHidden(), '__construct() can take "InputOption::HIDDEN" as its mode');
+    }
+
+    #[Group('legacy')]
+    #[IgnoreDeprecations]
+    public function testIsValueRequiredIsDeprecated()
+    {
+        $option = new InputOption('foo', 'f', InputOption::VALUE_REQUIRED);
+
+        $this->expectUserDeprecationMessage('Since symfony/console 8.2: Method "Symfony\Component\Console\Input\InputOption::isValueRequired()" is deprecated, use "Symfony\Component\Console\Input\InputOption::valueMode()" instead.');
+
+        $option->isValueRequired();
+    }
+
+    #[DataProvider('provideValueModeCases')]
+    public function testValueModeMatchesLegacyAccessor(int $mode, int $expectedValueMode)
+    {
+        $option = new InputOption('foo', 'f', $mode);
+
+        $this->assertSame($expectedValueMode, $option->valueMode());
+        $this->assertSame(
+            InputOption::VALUE_REQUIRED === (InputOption::VALUE_REQUIRED & $mode),
+            InputOption::VALUE_REQUIRED === $option->valueMode(),
+        );
+    }
+
+    public static function provideValueModeCases(): iterable
+    {
+        yield 'none' => [InputOption::VALUE_NONE, InputOption::VALUE_NONE];
+        yield 'required' => [InputOption::VALUE_REQUIRED, InputOption::VALUE_REQUIRED];
+        yield 'optional' => [InputOption::VALUE_OPTIONAL, InputOption::VALUE_OPTIONAL];
+        yield 'required array' => [InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, InputOption::VALUE_REQUIRED];
+        yield 'optional array' => [InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, InputOption::VALUE_OPTIONAL];
+        yield 'deprecated' => [InputOption::DEPRECATED, InputOption::VALUE_NONE];
+        yield 'hidden' => [InputOption::HIDDEN, InputOption::VALUE_NONE];
     }
 
     #[DataProvider('provideInvalidModes')]

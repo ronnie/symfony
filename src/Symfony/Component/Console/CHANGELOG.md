@@ -23,6 +23,7 @@ CHANGELOG
  * Add `GitlabCiReporter` to emit reports in the GitLab Code Quality format
  * Wrap the descriptions in `TextDescriptor` output to the terminal width; pass the `terminal_width` describe option to control it
  * Allow union and intersection type-hints when autowiring arguments of invokable commands
+ * Deprecate `InputOption::isValueRequired()` in favor of `InputOption::valueMode()`
 
 8.1
 ---
