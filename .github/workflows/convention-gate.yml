@@ -27,11 +27,12 @@ jobs:
         php: [ '8.4', '8.5' ]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: '${{ matrix.php }}'
           extensions: intl, mbstring
@@ -52,8 +53,15 @@ jobs:
 
       - name: Locate the change record
         id: record
+        # BASE_REF travels through env rather than being expanded directly
+        # into the script: a template expression inlined into a run: block
+        # is text-substituted before bash ever sees it, so any value
+        # containing shell metacharacters becomes code rather than data. An
+        # env var is passed as a value, not spliced into the script text.
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          file=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- '.change/*.yml' | head -1)
+          file=$(git diff --name-only "origin/$BASE_REF...HEAD" -- '.change/*.yml' | head -1)
           if [ -z "$file" ]; then
             echo "No change record in this pull request." >&2
             echo "Every change carries one. Run /plan-change." >&2
@@ -71,7 +79,10 @@ jobs:
       - name: Gate, before tests
         # C1 through C4 in full. C5 verifies the named tests exist but cannot
         # yet confirm they ran.
-        run: php bin/check-change.php "${{ steps.record.outputs.file }}" --base "origin/${{ github.base_ref }}"
+        env:
+          RECORD_FILE: ${{ steps.record.outputs.file }}
+          BASE_REF: ${{ github.base_ref }}
+        run: php bin/check-change.php "$RECORD_FILE" --base "origin/$BASE_REF"
 
       - name: Component test suite
         env:
@@ -103,24 +114,28 @@ jobs:
         id: gate
         env:
           JUNIT_XML: build/junit.xml
+          RECORD_FILE: ${{ steps.record.outputs.file }}
+          BASE_REF: ${{ github.base_ref }}
         # Same script, same manifest, same logic as the local run. C5 now
         # verifies execution rather than existence, which is the difference
         # between a change record that documents intent and one that is
         # enforced.
         run: |
-          php bin/check-change.php "${{ steps.record.outputs.file }}" \
-            --base "origin/${{ github.base_ref }}" --format=json | tee build/gate.json
-          php bin/check-change.php "${{ steps.record.outputs.file }}" \
-            --base "origin/${{ github.base_ref }}"
+          php bin/check-change.php "$RECORD_FILE" \
+            --base "origin/$BASE_REF" --format=json | tee build/gate.json
+          php bin/check-change.php "$RECORD_FILE" \
+            --base "origin/$BASE_REF"
 
       - name: Summary comment
         if: always() && matrix.php == '8.5'
         env:
           GH_TOKEN: ${{ github.token }}
+          RECORD_FILE: ${{ steps.record.outputs.file }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         # One sticky comment updated in place. Three separate comments would
         # duplicate on every rerun and triple the notification volume, and the
         # per role subscription people imagine as the benefit does not exist.
         run: |
-          php bin/pr-comment.php build/gate.json "${{ steps.record.outputs.file }}" > build/comment.md
-          gh pr comment "${{ github.event.pull_request.number }}" \
+          php bin/pr-comment.php build/gate.json "$RECORD_FILE" > build/comment.md
+          gh pr comment "$PR_NUMBER" \
             --body-file build/comment.md --edit-last --create-if-none
