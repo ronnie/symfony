@@ -101,19 +101,19 @@ jobs:
         # upstream's own exclusion rather than widening it.
         #
         # InvokableCommandTest::testAskWithVariadicInputFilesCollectsAndStacks
-        # was excluded by name on the belief that it errors on a clean
-        # checkout. Re-measured 2026-09-12: it passes in isolation, in the
-        # full local Console suite, with this exact phpunit invocation, and on
-        # symfony/symfony's own Unit Tests (8.4) and (8.5) CI at the commit
-        # this fork's 8.2 was branched from. No environment tried reproduces
-        # the failure. Left in place pending re-investigation rather than
-        # removed on the strength of a re-measurement that itself couldn't
-        # explain the original observation.
+        # was previously excluded by name on the belief that it errors on a
+        # clean checkout. Re-measured 2026-09-12: it passes in isolation, in
+        # the full local Console suite, with this exact phpunit invocation,
+        # and on symfony/symfony's own Unit Tests (8.4) and (8.5) CI at the
+        # commit this fork's 8.2 was branched from. No environment tried
+        # reproduces the failure, so the --filter exclusion is removed here
+        # to let this runner settle the question directly: if it fails here,
+        # the exclusion goes back with the runner's own evidence attached
+        # instead of an unconfirmed belief.
         run: |
           mkdir -p build
           ./phpunit src/Symfony/Component/Console \
             --exclude-group tty --exclude-group benchmark --exclude-group intl-data --exclude-group integration --exclude-group transient \
-            --filter '/^(?!.*testAskWithVariadicInputFilesCollectsAndStacks).*$/' \
             --log-junit build/junit.xml
 
       - name: Gate, after tests
