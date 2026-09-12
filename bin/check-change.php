@@ -20,20 +20,63 @@ require __DIR__ . '/lib/codeowners.php';
 require __DIR__ . '/lib/record.php';
 require __DIR__ . '/lib/git.php';
 
+// Both --flag=value and --flag value are accepted, because both get typed and
+// a workflow that passes the space form should not silently lose it. An earlier
+// version handled only the equals form, skipped anything else beginning with
+// two dashes, and assigned every remaining positional to the record path. So
+// `--base "origin/8.2"` dropped the flag and the ref became the record path:
+// "change record not found: origin/8.2", in CI, on the first run.
+//
+// Unknown flags are now an error. Silently ignoring one is the same class of
+// failure as defaulting a missing manifest.
 $args = array_slice($argv, 1);
 $recordPath = null;
 $format = 'human';
 $base = null;
+$unknown = [];
 
-foreach ($args as $arg) {
-    if (str_starts_with($arg, '--format=')) { $format = substr($arg, 9); continue; }
-    if (str_starts_with($arg, '--base=')) { $base = substr($arg, 7); continue; }
-    if (str_starts_with($arg, '--')) { continue; }
-    $recordPath = $arg;
+for ($i = 0; $i < count($args); $i++) {
+    $arg = $args[$i];
+
+    if (str_contains($arg, '=') && str_starts_with($arg, '--')) {
+        [$name, $value] = explode('=', $arg, 2);
+    } elseif (str_starts_with($arg, '--')) {
+        $name = $arg;
+        $value = $args[$i + 1] ?? null;
+        if ($value !== null && !str_starts_with($value, '--')) {
+            $i++;
+        } else {
+            $value = null;
+        }
+    } else {
+        if ($recordPath !== null) {
+            $unknown[] = sprintf('unexpected second path "%s" (already have "%s")', $arg, $recordPath);
+            continue;
+        }
+        $recordPath = $arg;
+        continue;
+    }
+
+    switch ($name) {
+        case '--format': $format = (string) $value; break;
+        case '--base':   $base = (string) $value; break;
+        default:         $unknown[] = 'unknown option ' . $name;
+    }
 }
 
-if ($recordPath === null) {
-    fwrite(STDERR, "usage: check-change.php <change-record.yml> [--format=json] [--base=ref]\n");
+if ($unknown !== [] || $recordPath === null) {
+    fwrite(STDERR, "usage: check-change.php <change-record.yml> [--format json] [--base ref]\n");
+    foreach ($unknown as $u) {
+        fwrite(STDERR, "  $u\n");
+    }
+    if ($recordPath === null) {
+        fwrite(STDERR, "  no change record path given\n");
+    }
+    exit(2);
+}
+
+if (!in_array($format, ['human', 'json'], true)) {
+    fwrite(STDERR, "unknown format \"$format\", expected human or json\n");
     exit(2);
 }
 
