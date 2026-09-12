@@ -244,9 +244,18 @@ time of the check.
 
 ## Open
 
-- `InvokableCommandTest::testAskWithVariadicInputFilesCollectsAndStacks` errors
-  on a clean checkout, deterministically, in isolation. Excluded by name in the
-  workflow so any other failure still surfaces. Cause not yet established.
+- Closed 2026-09-12. `InvokableCommandTest::testAskWithVariadicInputFilesCollectsAndStacks`
+  was believed to error on a clean checkout, deterministically, in isolation,
+  and was excluded by name in the workflow on that belief. Re-measurement
+  found no environment where it actually fails: not in 5 isolated local runs,
+  not in the full local Console suite, not with the exact upstream phpunit
+  invocation, not on symfony/symfony's own Unit Tests (8.4) and (8.5) CI at
+  the commit this fork's 8.2 was branched from, and not on the convention
+  gate's own runner once `--filter` was removed
+  (`gate (php 8.4)` and `gate (php 8.5)`, 1977 tests, 0 failures, both
+  green). The `--filter` exclusion is removed from `convention-gate.yml`.
+  What produced the original observation was never established; the claim
+  itself did not survive contact with evidence.
 - Lab 9: the complete valid hook type list, still truncated in the lab 7 notes.
 - Whether the rule text in `/deprecate` step 4 actually changes agent behaviour.
   Run the command with and without the sentence about related implementations
