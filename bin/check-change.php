@@ -378,27 +378,48 @@ if (!$declaresDeprecation) {
 // mined corpus target 5.4 and every one is correct. A check that encoded the
 // documented policy would have failed all fifty.
 
+// Where does the base branch come from.
+//
+// In CI, GITHUB_BASE_REF is the merge target and it is authoritative.
+//
+// Locally there is no git-only answer. An earlier version read @{u}, the
+// branch's own upstream tracking ref, which is where the branch PUSHES, not
+// what it MERGES INTO. It skipped on every run until the branch was pushed,
+// then reported "declared 8.2, actual change/CHG-0001-input-option" and failed
+// a correct change. Pushing and merging are different relationships and that
+// fallback conflated them.
+//
+// `gh pr view` does know, once a pull request exists. It is a network call, so
+// it is a local convenience rather than part of the CI path, and it is skipped
+// silently when gh is absent or no pull request is open.
 $actualBase = getenv('GITHUB_BASE_REF') ?: null;
+$baseSource = 'GITHUB_BASE_REF';
+
 if ($actualBase === null) {
-    $upstream = git('rev-parse --abbrev-ref --symbolic-full-name @{u}');
-    $actualBase = $upstream ? preg_replace('#^[^/]+/#', '', $upstream[0]) : null;
+    $out = [];
+    $code = 1;
+    exec('gh pr view --json baseRefName -q .baseRefName 2>/dev/null', $out, $code);
+    if ($code === 0 && ($out[0] ?? '') !== '') {
+        $actualBase = trim($out[0]);
+        $baseSource = 'gh pr view';
+    }
 }
 
 if ($actualBase === null) {
     $results[] = ['id' => 'C3', 'title' => 'declared branch', 'status' => 'skip',
-                  'detail' => 'no base branch available outside a pull request'];
+                  'detail' => 'no merge target available: not in CI and no open pull request found. C3 is meaningful only where a base branch exists'];
 } elseif ($actualBase !== $declaredBranch) {
     $violations[] = [
         'check' => 'C3', 'path' => $recordPath, 'line' => null,
-        'message' => sprintf('Change record declares branch "%s", pull request targets "%s".',
-            $declaredBranch, $actualBase),
+        'message' => sprintf('Change record declares branch "%s", pull request targets "%s" (base from %s).',
+            $declaredBranch, $actualBase, $baseSource),
         'fix' => 'Retarget the pull request, or correct target.branch. Do not assume the development branch is always right: a bug fix belongs on the oldest maintained branch containing it, and that set is not machine derivable.',
     ];
     $results[] = ['id' => 'C3', 'title' => 'declared branch', 'status' => 'fail',
                   'detail' => sprintf('declared %s, actual %s', $declaredBranch, $actualBase)];
 } else {
     $results[] = ['id' => 'C3', 'title' => 'declared branch', 'status' => 'pass',
-                  'detail' => sprintf('declared and actual both %s', $declaredBranch)];
+                  'detail' => sprintf('declared and actual both %s, base from %s', $declaredBranch, $baseSource)];
 }
 
 // ----------------------------------------------------------------------- C4
