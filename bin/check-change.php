@@ -275,108 +275,97 @@ $results[] = [
 ];
 
 // ----------------------------------------------------------------------- C2
+//
+// Two assertions, both stated in .github/PULL_REQUEST_TEMPLATE.md, which is the
+// most read convention document in the repository:
+//
+//   | Deprecations? | yes/no <!-- if yes, also update UPGRADE-*.md and
+//                                  src/**/CHANGELOG.md -->
+//
+// and below the table: "New features and deprecations must target the feature
+// branch and must add an entry to the changelog file of the patched component".
+//
+//   C2.changelog  an added line under the declared version heading in the
+//                 component's CHANGELOG.md mentions the deprecation
+//   C2.upgrade    an added line under the component heading in UPGRADE-<branch>.md
+//                 mentions it too
+//
+// Measured: 12 of 13 deprecation pull requests in the mined corpus touched an
+// upgrade file. The first version of this check looked only at the changelog
+// and passed a change the template calls incomplete.
+
 $changelog = $componentRoot . '/CHANGELOG.md';
+$upgrade = 'UPGRADE-' . $declaredBranch . '.md';
 $declaresDeprecation = ($record['change_type'] ?? null) === 'deprecation' || $checkable > 0;
 
 if (!$declaresDeprecation) {
-    $results[] = ['id' => 'C2', 'title' => 'changelog entry', 'status' => 'skip',
+    $results[] = ['id' => 'C2', 'title' => 'changelog and upgrade', 'status' => 'skip',
                   'detail' => 'no deprecation in this change'];
-} elseif (!in_array($changelog, $changed, true)) {
-    $violations[] = [
-        'check' => 'C2', 'path' => $changelog, 'line' => null,
-        'message' => 'This change introduces a deprecation and the component changelog was not modified.',
-        'fix' => sprintf('Add an entry under the %s heading in %s.', $declaredBranch, $changelog),
-    ];
-    $results[] = ['id' => 'C2', 'title' => 'changelog entry', 'status' => 'fail',
-                  'detail' => 'changelog not touched'];
 } else {
-    $addedText = git_added_text($base, $changelog);
-    $mentions = array_filter($addedText, fn($l) => preg_match('/deprecat/i', $l));
+    $details = [];
+    $c2Failed = false;
 
-    // Symfony uses setext headings in component changelogs: the version on one
-    // line, dashes underneath. An ATX pattern finds nothing here, which is why
-    // this check reported an empty heading list and passed on the mention alone.
-    //
-    //   CHANGELOG
-    //   =========
-    //
-    //   8.2
-    //   ---
-    //
-    //    * Add ...
-    //
-    // Read the file, find the line range belonging to the declared version, and
-    // require the added lines to fall inside it. An entry under the wrong
-    // version reaches the wrong release notes, which is the failure C2 exists
-    // to prevent.
-    $lines = is_file($changelog) ? file($changelog, FILE_IGNORE_NEW_LINES) : [];
-    $headings = [];
-    foreach ($lines as $i => $line) {
-        $next = $lines[$i + 1] ?? '';
-        $isSetext = preg_match('/^-{3,}\s*$/', $next) || preg_match('/^={3,}\s*$/', $next);
-        if ($isSetext && preg_match('/^\s*(\S+)\s*$/', $line, $m)) {
-            $headings[] = ['name' => $m[1], 'line' => $i + 1];
+    foreach ([
+        ['C2.changelog', $changelog, $declaredBranch, 'version'],
+        ['C2.upgrade',   $upgrade,   $component,      'component'],
+    ] as [$id, $path, $section, $kind]) {
+
+        if (!in_array($path, $changed, true)) {
+            $violations[] = [
+                'check' => $id, 'path' => $path, 'line' => null,
+                'message' => sprintf('This change introduces a deprecation and %s was not modified.', $path),
+                'fix' => sprintf('Add an entry under the "%s" %s heading. The pull request template requires both a changelog and an upgrade entry for a deprecation.', $section, $kind),
+            ];
+            $details[] = $id . ' not touched';
+            $c2Failed = true;
             continue;
         }
-        if (preg_match('/^\s*#{1,3}\s*(\S+)/', $line, $m)) {
-            $headings[] = ['name' => $m[1], 'line' => $i + 1];
+
+        [$from, $to, $names] = locate_section($path, $section);
+        $addedText = git_added_text($base, $path);
+        $mentions = array_filter($addedText, fn($l) => preg_match('/deprecat/i', $l));
+        $addedLines = git_added_lines($base, $path);
+        $inSection = $from === null
+            ? []
+            : array_filter($addedLines, fn($l) => $l > $from && $l < $to);
+
+        if ($mentions === []) {
+            $violations[] = [
+                'check' => $id, 'path' => $path, 'line' => null,
+                'message' => sprintf('%s was modified but no added line mentions a deprecation.', $path),
+                'fix' => sprintf('Describe the deprecation under the "%s" heading.', $section),
+            ];
+            $details[] = $id . ' no deprecation wording';
+            $c2Failed = true;
+        } elseif ($from === null) {
+            $violations[] = [
+                'check' => $id, 'path' => $path, 'line' => null,
+                'message' => sprintf('No "%s" heading in %s. Found: %s.', $section, $path,
+                    implode(', ', array_slice($names, 0, 6))),
+                'fix' => sprintf('Add a "%s" section, or correct the change record.', $section),
+            ];
+            $details[] = $id . ' no section';
+            $c2Failed = true;
+        } elseif ($inSection === []) {
+            $violations[] = [
+                'check' => $id, 'path' => $path, 'line' => $addedLines[0] ?? null,
+                'message' => sprintf('The entry sits outside the "%s" section, which spans lines %d to %d.',
+                    $section, $from, $to),
+                'fix' => sprintf('Move it under the "%s" heading. An entry in the wrong section reaches the wrong release notes.', $section),
+            ];
+            $details[] = $id . ' outside section';
+            $c2Failed = true;
+        } else {
+            $details[] = sprintf('%s ok (%d line%s under "%s")', $id,
+                count($inSection), count($inSection) === 1 ? '' : 's', $section);
         }
     }
 
-    $sectionStart = null;
-    $sectionEnd = count($lines);
-    foreach ($headings as $n => $h) {
-        if ($h['name'] === $declaredBranch) {
-            $sectionStart = $h['line'];
-            $sectionEnd = $headings[$n + 1]['line'] ?? count($lines);
-            break;
-        }
-    }
-
-    $addedLines = git_added_lines($base, $changelog);
-    $inSection = $sectionStart === null
-        ? []
-        : array_filter($addedLines, fn($l) => $l > $sectionStart && $l < $sectionEnd);
-
-    $versionNames = array_column($headings, 'name');
-
-    if ($mentions === []) {
-        $violations[] = [
-            'check' => 'C2', 'path' => $changelog, 'line' => null,
-            'message' => 'The changelog was modified but no added line mentions a deprecation.',
-            'fix' => sprintf('Describe the deprecation under the %s heading.', $declaredBranch),
-        ];
-        $results[] = ['id' => 'C2', 'title' => 'changelog entry', 'status' => 'fail',
-                      'detail' => 'no deprecation wording in added lines'];
-    } elseif ($sectionStart === null) {
-        $violations[] = [
-            'check' => 'C2', 'path' => $changelog, 'line' => null,
-            'message' => sprintf('No "%s" heading in the changelog. Found: %s.',
-                $declaredBranch, implode(', ', array_slice($versionNames, 0, 6))),
-            'fix' => sprintf('Add a %s section, or correct target.branch in the change record.', $declaredBranch),
-        ];
-        $results[] = ['id' => 'C2', 'title' => 'changelog entry', 'status' => 'fail',
-                      'detail' => sprintf('no %s section', $declaredBranch)];
-    } elseif ($inSection === []) {
-        $violations[] = [
-            'check' => 'C2', 'path' => $changelog, 'line' => $addedLines[0] ?? null,
-            'message' => sprintf(
-                'The entry mentions a deprecation but sits outside the %s section, which spans lines %d to %d.',
-                $declaredBranch, $sectionStart, $sectionEnd
-            ),
-            'fix' => sprintf('Move the entry under the %s heading. An entry under the wrong version reaches the wrong release notes.', $declaredBranch),
-        ];
-        $results[] = ['id' => 'C2', 'title' => 'changelog entry', 'status' => 'fail',
-                      'detail' => sprintf('entry outside the %s section', $declaredBranch)];
-    } else {
-        $results[] = [
-            'id' => 'C2', 'title' => 'changelog entry', 'status' => 'pass',
-            'detail' => sprintf('%d line%s under "%s" (lines %d to %d), %d version%s in file',
-                count($inSection), count($inSection) === 1 ? '' : 's',
-                $declaredBranch, $sectionStart, $sectionEnd,
-                count($headings), count($headings) === 1 ? '' : 's'),
-        ];
-    }
+    $results[] = [
+        'id' => 'C2', 'title' => 'changelog and upgrade',
+        'status' => $c2Failed ? 'fail' : 'pass',
+        'detail' => implode(', ', $details),
+    ];
 }
 
 // ----------------------------------------------------------------------- C3
@@ -584,6 +573,44 @@ if ($violations !== []) {
 $pass = count(array_filter($results, fn($r) => $r['status'] === 'pass'));
 printf("\n%d passed, %d failed\n", $pass, count($failed));
 exit($status === 'pass' ? 0 : 1);
+
+
+/**
+ * Find a named section and return its line range.
+ *
+ * Symfony uses setext headings in both files: the name on one line, dashes or
+ * equals signs underneath. An ATX pattern finds nothing, which is how C2 once
+ * reported an empty heading list and passed on a keyword match alone.
+ *
+ *   CHANGELOG          UPGRADE FROM 8.1 to 8.2
+ *   =========          =======================
+ *
+ *   8.2                Console
+ *   ---                -------
+ *
+ * @return array{0:?int,1:int,2:string[]} start line, end line, all names found
+ */
+function locate_section(string $path, string $name): array
+{
+    $lines = is_file($path) ? file($path, FILE_IGNORE_NEW_LINES) : [];
+    $headings = [];
+    foreach ($lines as $i => $line) {
+        $next = $lines[$i + 1] ?? '';
+        if (preg_match('/^[-=]{3,}\s*$/', $next) && preg_match('/^\s*(\S.*?)\s*$/', $line, $m)) {
+            $headings[] = ['name' => $m[1], 'line' => $i + 1];
+            continue;
+        }
+        if (preg_match('/^\s*#{1,3}\s*(\S.*?)\s*$/', $line, $m)) {
+            $headings[] = ['name' => $m[1], 'line' => $i + 1];
+        }
+    }
+    foreach ($headings as $n => $h) {
+        if ($h['name'] === $name) {
+            return [$h['line'], $headings[$n + 1]['line'] ?? count($lines), array_column($headings, 'name')];
+        }
+    }
+    return [null, count($lines), array_column($headings, 'name')];
+}
 
 function emit_fatal(string $format, string $message, array $detail = []): void
 {
