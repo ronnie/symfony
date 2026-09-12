@@ -28,12 +28,21 @@ scope:
 # It exists because DECISIONS.md tripped C4 in lab 12. That was correct
 # behaviour: nothing had told the gate that the artifact's own documentation is
 # infrastructure rather than a change reaching outside its boundary.
+#
+# build/** exists because the gate writes its own instrumentation there:
+# convention-gate.yml runs phpunit with --log-junit build/junit.xml, then
+# check-change.php --format=json with `tee build/gate.json`, before the gate
+# re-reads its own diff to run C4 and C5 a second time. Untracked files count
+# toward that diff on purpose, so the gate's own output tripped over itself:
+# the same failure mode as the DECISIONS.md case above, just written by a
+# process instead of an editor.
 artifact_paths:
   - bin/**
   - .cursor/**
   - .change/**
   - conventions.yml
   - DECISIONS.md
+  - build/**
   - .github/workflows/convention-gate.yml
 
 boundary:
