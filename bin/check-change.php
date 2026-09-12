@@ -523,7 +523,7 @@ foreach ($record['acceptance'] as $ac) {
             $ac['id'] ?? '?', $ref, $relative);
         continue;
     }
-    if ($executed !== null && $method !== '' && !in_array($method, $executed, true)) {
+    if ($executed !== null && $method !== '' && !method_ran($method, $executed)) {
         $notRun[] = sprintf('%s names %s, which exists but did not run', $ac['id'] ?? '?', $ref);
     }
 }
@@ -631,6 +631,33 @@ function locate_section(string $path, string $name): array
         }
     }
     return [null, count($lines), array_column($headings, 'name')];
+}
+
+/**
+ * Whether a named test method executed, per the junit testcase names in
+ * $executed.
+ *
+ * PHPUnit never writes the bare method name for a #[DataProvider] test: each
+ * generated case is named `<method> with data set "<label>"` (or `#<n>` for
+ * an unlabelled provider). An exact match against $method alone would call
+ * every parameterized acceptance test unrun even when every one of its cases
+ * passed, which is what testValueModeMatchesLegacyAccessor hit with 7 of 7
+ * cases green. A following character that cannot appear in a PHP identifier
+ * (anything but [A-Za-z0-9_]) is enough to tell "ran with a data set" apart
+ * from a different, longer method name that happens to share a prefix.
+ */
+function method_ran(string $method, array $executed): bool
+{
+    foreach ($executed as $name) {
+        if ($name === $method) {
+            return true;
+        }
+        if (str_starts_with($name, $method) && !preg_match('/^\w/', substr($name, strlen($method)))) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function emit_fatal(string $format, string $message, array $detail = []): void
