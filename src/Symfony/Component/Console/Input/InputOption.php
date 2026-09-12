@@ -156,7 +156,7 @@ class InputOption
      */
     public function acceptValue(): bool
     {
-        return $this->isValueRequired() || $this->isValueOptional();
+        return $this->valueMode() || $this->isValueOptional();
     }
 
     /**
@@ -164,7 +164,7 @@ class InputOption
      *
      * @return bool true if value mode is self::VALUE_REQUIRED, false otherwise
      */
-    public function isValueRequired(): bool
+    public function valueMode(): bool
     {
         return self::VALUE_REQUIRED === (self::VALUE_REQUIRED & $this->mode);
     }
@@ -293,7 +293,7 @@ class InputOption
             && $option->getDefault() === $this->getDefault()
             && $option->isNegatable() === $this->isNegatable()
             && $option->isArray() === $this->isArray()
-            && $option->isValueRequired() === $this->isValueRequired()
+            && $option->valueMode() === $this->valueMode()
             && $option->isValueOptional() === $this->isValueOptional()
         ;
     }

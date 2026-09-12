@@ -144,21 +144,21 @@ class InvokableCommandTest extends TestCase
         $timeoutInputOption = $command->getDefinition()->getOption('idle');
         self::assertSame('idle', $timeoutInputOption->getName());
         self::assertNull($timeoutInputOption->getShortcut());
-        self::assertTrue($timeoutInputOption->isValueRequired());
+        self::assertTrue($timeoutInputOption->valueMode());
         self::assertFalse($timeoutInputOption->isValueOptional());
         self::assertFalse($timeoutInputOption->isNegatable());
         self::assertNull($timeoutInputOption->getDefault());
 
         $typeInputOption = $command->getDefinition()->getOption('type');
         self::assertSame('type', $typeInputOption->getName());
-        self::assertTrue($typeInputOption->isValueRequired());
+        self::assertTrue($typeInputOption->valueMode());
         self::assertFalse($typeInputOption->isNegatable());
         self::assertSame('USER_TYPE', $typeInputOption->getDefault());
 
         $verboseInputOption = $command->getDefinition()->getOption('verbose');
         self::assertSame('verbose', $verboseInputOption->getName());
         self::assertSame('v', $verboseInputOption->getShortcut());
-        self::assertFalse($verboseInputOption->isValueRequired());
+        self::assertFalse($verboseInputOption->valueMode());
         self::assertFalse($verboseInputOption->isValueOptional());
         self::assertFalse($verboseInputOption->isNegatable());
         self::assertFalse($verboseInputOption->getDefault());
@@ -172,7 +172,7 @@ class InvokableCommandTest extends TestCase
 
         $rolesInputOption = $command->getDefinition()->getOption('roles');
         self::assertSame('roles', $rolesInputOption->getName());
-        self::assertTrue($rolesInputOption->isValueRequired());
+        self::assertTrue($rolesInputOption->valueMode());
         self::assertFalse($rolesInputOption->isNegatable());
         self::assertTrue($rolesInputOption->isArray());
         self::assertSame(['ROLE_USER'], $rolesInputOption->getDefault());
@@ -183,7 +183,7 @@ class InvokableCommandTest extends TestCase
         $optInputOption = $command->getDefinition()->getOption('opt');
         self::assertSame('opt', $optInputOption->getName());
         self::assertNull($optInputOption->getShortcut());
-        self::assertFalse($optInputOption->isValueRequired());
+        self::assertFalse($optInputOption->valueMode());
         self::assertTrue($optInputOption->isValueOptional());
         self::assertFalse($optInputOption->isNegatable());
         self::assertFalse($optInputOption->getDefault());
@@ -254,17 +254,17 @@ class InvokableCommandTest extends TestCase
         });
 
         $enumInputOption = $command->getDefinition()->getOption('enum');
-        self::assertTrue($enumInputOption->isValueRequired());
+        self::assertTrue($enumInputOption->valueMode());
         self::assertSame('video', $enumInputOption->getDefault());
         self::assertTrue($enumInputOption->hasCompletion());
 
         $enumWithDefaultInputOption = $command->getDefinition()->getOption('enum-with-default');
-        self::assertTrue($enumWithDefaultInputOption->isValueRequired());
+        self::assertTrue($enumWithDefaultInputOption->valueMode());
         self::assertSame('image', $enumWithDefaultInputOption->getDefault());
         self::assertTrue($enumWithDefaultInputOption->hasCompletion());
 
         $nullableEnumInputOption = $command->getDefinition()->getOption('nullable-enum');
-        self::assertTrue($nullableEnumInputOption->isValueRequired());
+        self::assertTrue($nullableEnumInputOption->valueMode());
         self::assertNull($nullableEnumInputOption->getDefault());
         self::assertTrue($nullableEnumInputOption->hasCompletion());
 

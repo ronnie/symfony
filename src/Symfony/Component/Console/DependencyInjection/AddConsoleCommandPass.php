@@ -259,7 +259,7 @@ class AddConsoleCommandPass implements CompilerPassInterface
      */
     private function getOptionCall(InputOption $option): array
     {
-        $mode = ($option->acceptValue() ? ($option->isValueRequired() ? InputOption::VALUE_REQUIRED : InputOption::VALUE_OPTIONAL) : InputOption::VALUE_NONE)
+        $mode = ($option->acceptValue() ? ($option->valueMode() ? InputOption::VALUE_REQUIRED : InputOption::VALUE_OPTIONAL) : InputOption::VALUE_NONE)
             | ($option->isArray() ? InputOption::VALUE_IS_ARRAY : 0)
             | ($option->isNegatable() ? InputOption::VALUE_NEGATABLE : 0)
             | ($option->isDeprecated() ? InputOption::DEPRECATED : 0)

@@ -82,7 +82,7 @@ class ReStructuredTextDescriptor extends Descriptor
             $name."\n".str_repeat($this->paragraphsChar, Helper::width($name))."\n\n"
             .$optionDescription
             .'- **Accept value**: '.($option->acceptValue() ? 'yes' : 'no')."\n"
-            .'- **Is value required**: '.($option->isValueRequired() ? 'yes' : 'no')."\n"
+            .'- **Is value required**: '.($option->valueMode() ? 'yes' : 'no')."\n"
             .'- **Is multiple**: '.($option->isArray() ? 'yes' : 'no')."\n"
             .'- **Is negatable**: '.($option->isNegatable() ? 'yes' : 'no')."\n"
             .'- **Is deprecated**: '.($option->isDeprecated() ? 'yes' : 'no')."\n"

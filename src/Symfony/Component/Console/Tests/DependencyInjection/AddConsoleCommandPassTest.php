@@ -304,7 +304,7 @@ class AddConsoleCommandPassTest extends TestCase
         $this->assertSame('A group without code of its own', $group->getDescription());
         $option = $group->getDefinition()->getOption('context');
         $this->assertSame('c', $option->getShortcut());
-        $this->assertTrue($option->isValueRequired());
+        $this->assertTrue($option->valueMode());
         $this->assertSame('default', $option->getDefault());
         $suggestions = new CompletionSuggestions();
         $option->complete(CompletionInput::fromTokens([], 0), $suggestions);
