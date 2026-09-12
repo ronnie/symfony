@@ -76,8 +76,14 @@ jobs:
       - name: Component test suite
         env:
           SYMFONY_DEPRECATIONS_HELPER: max[self]=0
-        # One exclusion, by name rather than by file or group, so any other
-        # failure still surfaces and the exclusion cannot hide a regression.
+        # One exclusion by name, plus the tty group upstream's own
+        # unit-tests.yml excludes for exactly the same reason: a hosted
+        # runner has no interactive stdin. QuestionHelperTest is
+        # #[Group('tty')], and without this exclusion testAskTimeout and
+        # testAskThrowsExceptionOnMissingInputForChoiceQuestion abort
+        # immediately instead of exercising the behaviour under test. Every
+        # other failure still surfaces: this mirrors upstream's own exclusion
+        # rather than widening it.
         #
         # InvokableCommandTest::testAskWithVariadicInputFilesCollectsAndStacks
         # errors on a clean checkout with MissingInputException from
@@ -89,6 +95,7 @@ jobs:
         run: |
           mkdir -p build
           ./phpunit src/Symfony/Component/Console \
+            --exclude-group tty \
             --filter '/^(?!.*testAskWithVariadicInputFilesCollectsAndStacks).*$/' \
             --log-junit build/junit.xml
 
