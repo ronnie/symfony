@@ -41,7 +41,7 @@ agent runs this as a shell command and reads stdout. Measured, see lab 8.
 
 Exit 0 all passing, 1 a check failed, 2 usage or schema error.
 
-## The five checks
+## The five checks, nine assertions
 
 | Check | Asserts |
 | --- | --- |
@@ -49,8 +49,9 @@ Exit 0 all passing, 1 a check failed, 2 usage or schema error.
 | C1.package | First argument equals the owning component's composer name |
 | C1.version | Second argument equals the version in the change record |
 | C1.declared | A record declaring a deprecation has one in the diff |
-| C2 | The deprecation carries a component changelog entry |
-| C3 | Declared branch matches the pull request base. CI only |
+| C2.changelog | The deprecation carries a component changelog entry under the declared version heading |
+| C2.upgrade | The deprecation carries an entry under the component heading in `UPGRADE-<branch>.md` |
+| C3 | Declared branch matches the merge target, read from `GITHUB_BASE_REF` in CI or `gh pr view --json baseRefName` locally once a pull request exists; skipped when neither is available |
 | C4 | Diff stays inside declared paths and adds no composer require |
 | C5 | Every acceptance criterion names a test that exists and ran |
 
@@ -133,12 +134,14 @@ C2.changelog src/Symfony/Component/Console/CHANGELOG.md:51
 ```
 
 Moving the entry back restored 5 of 5. Both results are visible in the pull
-request thread, but not as one comment edited twice: `bin/pr-comment.php`
-switched from one sticky comment to one comment per run in between these two
-runs, so the pull request carries two separate comments, one holding each
-result, rather than a single comment overwritten in place. Checked directly
-against the pull request (`gh pr view 1 --json comments`) rather than
-assumed: it returns two comments matching this change record, not one.
+request thread, but not as one comment edited twice: the workflow posts a new
+comment when the gate's status differs from the most recent gate comment on
+the pull request, and edits that comment in place when the status is
+unchanged. The status flipped from fail to pass between these two runs, so
+the pull request carries two separate comments, one holding each result,
+rather than a single comment overwritten in place. Checked directly against
+the pull request (`gh pr view 1 --json comments`) rather than assumed: it
+returns two comments matching this change record, not one.
 
 | Run | PHP | URL |
 | --- | --- | --- |

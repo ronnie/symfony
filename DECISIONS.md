@@ -70,8 +70,8 @@ block, and overstating it is the first thing a skeptic takes apart.
 | `IgnoreDeprecations` | 86 files | grep |
 | `InputOption` accessors to migrate | 16 call sites, 10 files, all inside Console | grep |
 | Single test file | 0.24s | `./phpunit` |
-| Console suite | 12s, 2048 tests | `./phpunit` |
-| Pre-existing failure | 1, `InvokableCommandTest::testAskWithVariadicInputFilesCollectsAndStacks` | `./phpunit` |
+| Console suite | 12s, 2048 tests on 8.2 before CHG-0001; 2056 on the change branch, CHG-0001 adds 8 | `./phpunit` |
+| Pre-existing failures | 2, unrelated to this fork's changes. See "Pre-existing failures on this fork" | `./phpunit`, CI |
 
 **n is 16 for the C1 pairing rate. Quote the count, never the percentage.**
 
@@ -184,8 +184,10 @@ context natively. Enforcement of writes belongs in CI.
   everything is committed there, and a hole that exists only in the fast local
   loop is the one the engineer relies on. Closed by adding
   `git ls-files --others --exclude-standard` to the changed file set.
-- C3 compares the declared branch against the pull request base, so outside a
-  pull request there is nothing to compare and it skips. C3 is a CI only check.
+- C3 reads the merge target from `GITHUB_BASE_REF` in CI, or from
+  `gh pr view --json baseRefName` locally once a pull request is open, so it is
+  no longer a CI only check. It skips only when neither source is available:
+  no CI environment and no open pull request to ask.
 - Two of Symfony's own skills restate the maintained set in illustrative
   comments rather than fetching it: `bug-triage:24` and `sync-translations:50`
   both show arrays containing 8.0, which is no longer in the live
