@@ -173,7 +173,12 @@ jobs:
           previous_status=$(echo "$previous" | jq -r '.body // empty' | grep -oE 'Gate: (✅|❌)' | head -1 || true)
 
           if [ -n "$previous_id" ] && [ "$previous_status" = "$current_status" ]; then
-            gh api "repos/$GITHUB_REPOSITORY/issues/comments/$previous_id" -X PATCH -f body=@build/comment.md
+            # -f/--raw-field sends the value as a literal string; only
+            # -F/--field dereferences a leading "@" into a file read. Using
+            # -f here posted the literal text "@build/comment.md" as the
+            # comment body instead of its contents, confirmed against
+            # gh's own --help and reproduced with gh api -X POST /markdown.
+            gh api "repos/$GITHUB_REPOSITORY/issues/comments/$previous_id" -X PATCH -F body=@build/comment.md
           else
             gh pr comment "$PR_NUMBER" --body-file build/comment.md
           fi
