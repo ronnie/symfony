@@ -81,12 +81,11 @@ foreach (['C3' => 'Branch', 'C4' => 'Boundary and dependencies'] as $id => $labe
 
 // --------------------------------------------------------------- violations
 if ($gate['violations'] ?? []) {
-    echo "\n<details><summary>Violations</summary>\n\n";
+    echo "\n### Violations\n\n";
     foreach ($gate['violations'] as $v) {
         printf("**%s** `%s%s`\n%s\n_%s_\n\n", $v['check'], $v['path'],
             $v['line'] ? ':' . $v['line'] : '', $v['message'], $v['fix']);
     }
-    echo "</details>\n";
 }
 
 if (($by['C1']['skipped'] ?? []) !== []) {
