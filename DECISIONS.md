@@ -212,29 +212,59 @@ time of the check.
   `Symfony\Bundle\FrameworkBundle\Tests\Routing\RedirectableCompiledUrlMatcherTest::testSchemeRedirect`
   fails: "Failed asserting that two arrays are equal", the actual match
   result carrying an extra `_scheme_redirect => true` key the expectation
-  doesn't have. That test class exists nowhere in this checkout — only
-  `RedirectableCompiledUrlMatcher.php` does — while the Routing component's
-  own tests under `Routing/Tests/Matcher` already assert
-  `_scheme_redirect => true` correctly. Not a code regression: the `Routing`
-  and `FrameworkBundle` source is byte-identical between upstream PR #66025's
-  commit and `2d43fa6935f9` (`git diff`, empty). It is `high-deps` composer
-  resolution drifting over time. Timestamped evidence: PR #66025's own
-  `Unit Tests (8.4, high-deps)` check ran 2026-09-11 17:58:24–18:03:55 UTC
-  and passed
-  (github.com/symfony/symfony/actions/runs/34630658335/job/103366392072).
+  doesn't have. That test class exists nowhere in this checkout, only
+  `RedirectableCompiledUrlMatcher.php` does, which is the first sign this
+  isn't a code regression in this repository at all.
+
+  Mechanism, not a flake. `unit-tests.yml:120-131`: for whichever branch is
+  currently the highest maintained one, `high-deps` mode deliberately
+  `git fetch`es and `git checkout -m`'s the *previous* branch mid-run, to
+  test the current branch's patched components against the last stable
+  branch's tree. `git ls-remote --heads` against the real
+  `symfony/symfony` confirms `8.2` is that highest branch today, so every
+  `high-deps` run on `8.2` performs this checkout, replacing the working
+  tree with `8.1`'s. `8.1` still carries its own copy of
+  `FrameworkBundle\Tests\Routing\RedirectableCompiledUrlMatcherTest`,
+  confirmed by fetching it directly: `testSchemeRedirect` there still
+  expects the pre-`_scheme_redirect` shape. That file was deleted from
+  `8.2` on 2026-09-10 by `906471c2d42` (an unrelated FrameworkBundle
+  wiring refactor), a full day before `_scheme_redirect` was introduced by
+  PR #66025 (verified from #66025's own diff: `RouterListener.php`,
+  `RedirectableUrlMatcher.php`, `CompiledUrlMatcherTrait.php`, and the
+  matching `Routing` test updates; it never touches `FrameworkBundle`). So
+  the CI job ends up running `8.1`'s stale test against `Routing`'s newer
+  behaviour: nobody updated or removed `8.1`'s copy when `_scheme_redirect`
+  shipped, because it only shipped on `8.2`.
+
+  One link in this chain is confirmed by outcome but not by direct
+  instrumentation: exactly how the newer `Routing` behaviour still reaches
+  `8.1`'s checked-out test after the tree swap. `build-packages.php` only
+  builds a locally patched package for a component whose diff against the
+  tested commit's own parent is non-empty, which a Console-only commit
+  never triggers for `Routing` or `FrameworkBundle`; the working theory is
+  that both then resolve via Packagist's live `8.2.x-dev`/`8.1.x-dev`
+  snapshots, which already reflect this exact state. Timestamped evidence
+  that the resulting outcome is real and not incidental: PR #66025's own
+  `Unit Tests (8.4, high-deps)` check, run before `_scheme_redirect`
+  merged, passed
+  (github.com/symfony/symfony/actions/runs/34630658335/job/103366392072);
   `2d43fa6935f9` — an unrelated commit, #66020's Console `LockableTrait`
-  change, touching neither `Routing` nor `FrameworkBundle` — ran the same
-  check 2026-09-11 19:11:49–19:17:50 UTC, about 70 minutes later, and
-  failed on this exact assertion
+  change, touching neither `Routing` nor `FrameworkBundle` — failed the
+  same check on this exact assertion once `_scheme_redirect` existed
+  upstream
   (github.com/symfony/symfony/actions/runs/34637505927/job/103388887434).
-  Something published to Packagist in that window shifted what `high-deps`
-  resolves; the git commit checked out is incidental. Rebasing onto an
-  earlier passing commit would not help, since a run today resolves against
-  today's Packagist state regardless of which commit is checked out, and a
+
+  Consequence: this is structural, not a one-off. It will reproduce on
+  essentially every future commit to `8.2` under `high-deps` until `8.1`'s
+  stale test is fixed or removed, or until `8.2` stops being the highest
+  branch. Rebasing onto an earlier commit doesn't help, since the code
+  under test (`Routing`, `FrameworkBundle`) is byte-identical between
+  #66025's commit and `2d43fa6935f9` (`git diff`, empty) — the difference
+  was never which commit, only whether `_scheme_redirect` existed yet. A
   composer constraint forcing a different resolution would mean editing
-  `FrameworkBundle` or `Routing` `composer.json` — outside CHG-0001's
-  Console-only scope, outside what this artifact governs, and it would mask
-  the symptom rather than fix the stale upstream test. Not excluded
+  `FrameworkBundle` or `Routing` `composer.json`, outside CHG-0001's
+  Console-only scope and outside what this artifact governs, and it would
+  mask the symptom rather than fix `8.1`'s stale test. Not excluded
   anywhere; neither `convention-gate.yml` nor `unit-tests.yml` names this
   test.
 
