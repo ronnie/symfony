@@ -139,15 +139,14 @@ jobs:
           RECORD_FILE: ${{ steps.record.outputs.file }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.base_ref }}
-        # One new comment per run rather than one sticky comment edited in
-        # place. DECISIONS.md records the sticky-comment tradeoff (three
-        # separate comments duplicate on every rerun, and the per role
-        # subscription people imagine as the benefit does not exist) as a
-        # deliberate choice; this reverses it on purpose so each gate run
-        # leaves its own visible history in the pull request thread, which
-        # is what a demo of intentional breakage needs to show a before and
-        # an after side by side. Revert to --edit-last --create-if-none to
-        # restore the sticky behaviour.
+        # A status transition is worth a notification, a rerun is not: post a
+        # new comment when the gate's status differs from the most recent
+        # existing gate comment on this pull request, and edit that comment
+        # in place when the status is unchanged. Prior comments are found by
+        # the <!-- change-record:ID --> marker bin/pr-comment.php writes as
+        # the first line, and the status is read back from the rendered
+        # "Gate: <emoji>" line rather than stored separately, so there is one
+        # source for what a comment says, not two that can disagree.
         #
         # This is the only step with if: always(), which means it is exactly
         # the step that runs when an earlier one failed outright: a C1-C4
@@ -164,4 +163,17 @@ jobs:
             php bin/check-change.php "$RECORD_FILE" --base "origin/$BASE_REF" --format=json > build/gate.json || true
           fi
           php bin/pr-comment.php build/gate.json "$RECORD_FILE" > build/comment.md
-          gh pr comment "$PR_NUMBER" --body-file build/comment.md
+
+          marker=$(head -1 build/comment.md)
+          current_status=$(grep -oE 'Gate: (✅|❌)' build/comment.md | head -1)
+          comments=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate)
+          previous=$(echo "$comments" | jq -c --arg marker "$marker" \
+            '[.[] | select(.body | startswith($marker))] | last // empty')
+          previous_id=$(echo "$previous" | jq -r '.id // empty')
+          previous_status=$(echo "$previous" | jq -r '.body // empty' | grep -oE 'Gate: (✅|❌)' | head -1 || true)
+
+          if [ -n "$previous_id" ] && [ "$previous_status" = "$current_status" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/issues/comments/$previous_id" -X PATCH -f body=@build/comment.md
+          else
+            gh pr comment "$PR_NUMBER" --body-file build/comment.md
+          fi

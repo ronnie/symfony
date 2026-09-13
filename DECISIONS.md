@@ -147,7 +147,7 @@ context natively. Enforcement of writes belongs in CI.
 | Revert off by default | It works and it desyncs the agent's model from disk. Kept as a demonstrated contrast rather than shipped behaviour |
 | Gate on 8.4 and 8.5, not 8.6 | Covers the declared minimum and the local runtime. A token walker is exactly the tool that breaks on new syntax, and 8.6 is unreleased |
 | Default dependency resolution | `low-deps` pulls older Symfony versions that emit their own deprecations, and the helper cannot separate those from the one under test |
-| One sticky PR comment | Three duplicate on every rerun. Per-comment subscription does not exist on GitHub |
+| New comment on a status transition, edit in place otherwise | A rerun that reports the same result is not news; a status that flips from pass to fail or back is. Every rerun posting its own comment duplicates on every rerun with nothing to distinguish one from the next, and per-comment subscription does not exist on GitHub. Prior comments are found by the `<!-- change-record:ID -->` marker and the status is read back from the rendered comment body, so there is one source for what a comment says rather than a separate record that can drift from it |
 | Owners from CODEOWNERS | A hand-maintained list is a second source of truth |
 
 ---
