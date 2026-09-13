@@ -28,6 +28,7 @@ $record = record_load($recordPath);
 
 $icon = fn(string $s) => ['pass' => 'passed', 'fail' => 'FAILED',
                           'skip' => 'skipped', 'todo' => 'todo'][$s] ?? $s;
+$statusEmoji = fn(string $s) => ['pass' => '✅', 'fail' => '❌'][$s] ?? $icon($s);
 
 $by = [];
 foreach ($gate['checks'] ?? [] as $c) {
@@ -41,7 +42,7 @@ printf("## %s  %s  %s  targets %s\n\n",
     $record['target']['component'] ?? '?', $record['target']['branch'] ?? '?');
 
 printf("**Gate: %s** (%d of %d checks passing)\n\n",
-    ($gate['status'] ?? 'unknown') === 'pass' ? 'green' : 'red',
+    ($gate['status'] ?? 'unknown') === 'pass' ? '✅' : '❌',
     count(array_filter($gate['checks'] ?? [], fn($c) => $c['status'] === 'pass')),
     count($gate['checks'] ?? []));
 
@@ -77,6 +78,15 @@ foreach (['C3' => 'Branch', 'C4' => 'Boundary and dependencies'] as $id => $labe
     if (isset($by[$id])) {
         printf("- %s: **%s**. %s\n", $label, $icon($by[$id]['status']), $by[$id]['detail'] ?? '');
     }
+}
+
+// ------------------------------------------------------------------ checks
+echo "\n### Checks\n\n";
+echo "| Check | Title | Status | Detail |\n";
+echo "| --- | --- | --- | --- |\n";
+foreach ($gate['checks'] ?? [] as $c) {
+    printf("| %s | %s | %s | %s |\n", $c['id'], $c['title'],
+        $statusEmoji($c['status']), $c['detail'] ?? '');
 }
 
 // --------------------------------------------------------------- violations
