@@ -38,3 +38,6 @@ acceptance:
   - id: AC2
     statement: valueMode() returns the same answer isValueRequired() did
     test: 'Symfony\Component\Console\Tests\Input\InputOptionTest::testValueModeMatchesLegacyAccessor'
+  - id: AC3
+    statement: valueMode() executes without emitting a deprecation
+    test: 'Symfony\Component\Console\Tests\Input\InputOptionTest::testValueModeEmitsNoDeprecation'

@@ -165,6 +165,24 @@ class InputOptionTest extends TestCase
         yield 'hidden' => [InputOption::HIDDEN, InputOption::VALUE_NONE];
     }
 
+    public function testValueModeEmitsNoDeprecation()
+    {
+        // Deliberately not #[Group('legacy')] and not #[IgnoreDeprecations]:
+        // matching the value isValueRequired() returned is not enough on its
+        // own, because a replacement implemented by calling the method it
+        // replaces would match too, while emitting the deprecation this
+        // method exists to let a caller stop triggering.
+        // SYMFONY_DEPRECATIONS_HELPER=max[self]=0 fails a run in which a test
+        // outside the legacy group triggers a self deprecation, which is the
+        // only thing that would fail this test if valueMode() called
+        // isValueRequired() or isValueOptional() internally.
+        $option = new InputOption('foo', 'f', InputOption::VALUE_REQUIRED);
+
+        $option->valueMode();
+
+        $this->addToAssertionCount(1);
+    }
+
     #[DataProvider('provideInvalidModes')]
     public function testInvalidModes(int $mode, string $message)
     {
