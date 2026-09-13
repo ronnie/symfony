@@ -139,9 +139,15 @@ jobs:
           RECORD_FILE: ${{ steps.record.outputs.file }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.base_ref }}
-        # One sticky comment updated in place. Three separate comments would
-        # duplicate on every rerun and triple the notification volume, and the
-        # per role subscription people imagine as the benefit does not exist.
+        # One new comment per run rather than one sticky comment edited in
+        # place. DECISIONS.md records the sticky-comment tradeoff (three
+        # separate comments duplicate on every rerun, and the per role
+        # subscription people imagine as the benefit does not exist) as a
+        # deliberate choice; this reverses it on purpose so each gate run
+        # leaves its own visible history in the pull request thread, which
+        # is what a demo of intentional breakage needs to show a before and
+        # an after side by side. Revert to --edit-last --create-if-none to
+        # restore the sticky behaviour.
         #
         # This is the only step with if: always(), which means it is exactly
         # the step that runs when an earlier one failed outright: a C1-C4
@@ -158,5 +164,4 @@ jobs:
             php bin/check-change.php "$RECORD_FILE" --base "origin/$BASE_REF" --format=json > build/gate.json || true
           fi
           php bin/pr-comment.php build/gate.json "$RECORD_FILE" > build/comment.md
-          gh pr comment "$PR_NUMBER" \
-            --body-file build/comment.md --edit-last --create-if-none
+          gh pr comment "$PR_NUMBER" --body-file build/comment.md
