@@ -138,10 +138,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RECORD_FILE: ${{ steps.record.outputs.file }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.base_ref }}
         # One sticky comment updated in place. Three separate comments would
         # duplicate on every rerun and triple the notification volume, and the
         # per role subscription people imagine as the benefit does not exist.
+        #
+        # This is the only step with if: always(), which means it is exactly
+        # the step that runs when an earlier one failed outright: a C1-C4
+        # violation fails "Gate, before tests" before "Component test suite"
+        # ever creates build/, and before "Gate, after tests" ever writes
+        # build/gate.json. Without this, the comment step itself failed on
+        # a missing file or directory and no comment was posted at all,
+        # silent on exactly the failure this comment exists to surface.
+        # Regenerating gate.json here when it is missing makes the step
+        # self-sufficient regardless of which earlier step stopped the job.
         run: |
+          mkdir -p build
+          if [ ! -f build/gate.json ]; then
+            php bin/check-change.php "$RECORD_FILE" --base "origin/$BASE_REF" --format=json > build/gate.json || true
+          fi
           php bin/pr-comment.php build/gate.json "$RECORD_FILE" > build/comment.md
           gh pr comment "$PR_NUMBER" \
             --body-file build/comment.md --edit-last --create-if-none
