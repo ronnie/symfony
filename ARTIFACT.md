@@ -73,7 +73,8 @@ DECISIONS.md                          evidence, decisions, known limits
 .github/workflows/convention-gate.yml the CI gate. Not conventions.yml.
 bin/check-change.php                  the gate
 bin/hook-guard.php                    the boundary
-bin/pr-comment.php                    record to sticky PR comment
+bin/pr-body.php                       record to pull request body
+bin/pr-comment.php                    record to gate comment
 bin/selftest.php                      fixtures
 bin/survey.php, bin/survey-calls.php  how the citations were measured
 bin/lib/                              walker, CODEOWNERS, record, git
@@ -94,7 +95,60 @@ after the suite with `JUNIT_XML` set so C5 can verify the named tests executed
 rather than merely existing. Same script both times, and the same script you run
 locally. No drift between editor and pipeline is the point of the whole thing.
 
-PHP 8.4 and 8.5. One test excluded by name, with the reason in the workflow.
+PHP 8.4 and 8.5. The test step excludes the same groups upstream's own
+`unit-tests.yml` excludes: `tty`, `benchmark`, `intl-data`, `integration`,
+`transient`. A hosted runner has no interactive stdin, which is what the
+`tty` exclusion is for; Console has no tests in the other four groups today,
+so listing them changes nothing yet, it just matches upstream's own
+invocation. A name-based exclusion for one specific test used to sit
+alongside these group exclusions, on the belief that the test errored
+deterministically on a clean checkout. Re-measurement found no environment
+where it actually failed, including this gate's own runner with the
+exclusion removed, so the exclusion was removed. See DECISIONS.md.
+
+## Proof the gate catches something
+
+On 2026-09-13, the changelog entry for the `InputOption::isValueRequired()`
+deprecation was moved from the "8.2" section of
+`src/Symfony/Component/Console/CHANGELOG.md` into the "8.1" section, and
+nothing else was touched. Correct syntax, correct wording, correct file,
+wrong version heading.
+
+That is the break worth demonstrating because nothing else in the repository
+notices it. Every existing test still passes: nothing asserts where a
+changelog line sits. A reviewer scanning a fourteen file diff sees one line
+move a few lines down inside a file that was already part of the change, and
+waves it through. The entry ships under the wrong release, and the people who
+read release notes by version are not the people who reviewed the diff.
+
+C2 caught it. From the actual job log
+(`gh run view 34731690881 --repo ronnie/symfony --log-failed`):
+
+```
+C2   changelog and upgrade  FAIL  C2.changelog outside section, C2.upgrade ok (1 line under "Console")
+
+C2.changelog src/Symfony/Component/Console/CHANGELOG.md:51
+  The entry sits outside the "8.2" section, which spans lines 4 to 27.
+  fix: Move it under the "8.2" heading. An entry in the wrong section reaches the wrong release notes.
+```
+
+Moving the entry back restored 5 of 5. Both results are visible in the pull
+request thread, but not as one comment edited twice: `bin/pr-comment.php`
+switched from one sticky comment to one comment per run in between these two
+runs, so the pull request carries two separate comments, one holding each
+result, rather than a single comment overwritten in place. Checked directly
+against the pull request (`gh pr view 1 --json comments`) rather than
+assumed: it returns two comments matching this change record, not one.
+
+| Run | PHP | URL |
+| --- | --- | --- |
+| Red, entry in the 8.1 section | 8.4 | https://github.com/ronnie/symfony/actions/runs/34731690881/job/103655524249 |
+| Red, entry in the 8.1 section | 8.5 | https://github.com/ronnie/symfony/actions/runs/34731690881/job/103655524335 |
+| Green, entry restored under 8.2 | 8.4 | https://github.com/ronnie/symfony/actions/runs/34732266326/job/103657106729 |
+| Green, entry restored under 8.2 | 8.5 | https://github.com/ronnie/symfony/actions/runs/34732266326/job/103657106761 |
+
+Two other checks are red on this pull request for reasons unrelated to this
+change. See "Pre-existing failures on this fork" in `DECISIONS.md`.
 
 ## Extending it
 
