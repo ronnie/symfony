@@ -23,6 +23,7 @@ CHANGELOG
  * Add `GitlabCiReporter` to emit reports in the GitLab Code Quality format
  * Wrap the descriptions in `TextDescriptor` output to the terminal width; pass the `terminal_width` describe option to control it
  * Allow union and intersection type-hints when autowiring arguments of invokable commands
+ * Deprecate `InputOption::isValueRequired()` in favor of `InputOption::valueMode()`
 
 8.1
 ---
@@ -48,7 +49,6 @@ CHANGELOG
  * Allow setting a boolean default value on `InputOption::VALUE_NEGATABLE` options
  * Deprecate passing both `InputArgument::REQUIRED` and `InputArgument::OPTIONAL` modes to `InputArgument` constructor
  * Deprecate passing more than one out of `InputOption::VALUE_NONE`, `InputOption::VALUE_REQUIRED` and `InputOption::VALUE_OPTIONAL` modes to `InputOption` constructor
- * Deprecate `InputOption::isValueRequired()` in favor of `InputOption::valueMode()`
  * Add `RawInputInterface` to expose the original arguments and options and to unparse options, implemented by `Input`
  * Add support for OSC 9;4 for progress reporting
 
