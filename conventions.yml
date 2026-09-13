@@ -70,10 +70,25 @@ boundary:
     # version of the objection every customer raises, which is that they already
     # have an agent file. See the composition note in ARTIFACT.md.
     - .agents/**
+    # A deprecation's change type requires an upgrade entry under the pull
+    # request template, and .change/CHG-0001.yml already declares UPGRADE-8.2.md
+    # in its own target.paths for C4 and C2. That declaration only reaches the
+    # gate; it says nothing to the read boundary, which is scoped to the
+    # component and does not vary per change record. Denied on a real
+    # /deprecate run when the agent tried to inspect the upgrade wording it had
+    # just written, and widened for every branch's file rather than one, since
+    # the next deprecation targets whichever branch is current then, not 8.2.
+    - UPGRADE-*.md
   read_allow_derived_from: src/Symfony/Component/Console/composer.json#require
-  # Writes are limited to the component root and its Tests directory.
+  # Writes are limited to the component root and its Tests directory, plus the
+  # upgrade files for the same reason they are readable above. Not itself
+  # enforced by a hook (there is no pre-edit hook, see bin/hook-guard.php's own
+  # header comment); it keeps `bin/hook-guard.php allowance` honest about what
+  # the agent is expected to touch, and C4 remains the actual write control,
+  # scoped per change record via target.paths.
   write_allow:
     - src/Symfony/Component/Console/**
+    - UPGRADE-*.md
 
 conventions:
 
