@@ -55,6 +55,25 @@ exists, stop and tell the user to run `/plan-change` first.
    assertion, which is the current API at 52 files against 9 for the legacy
    trait. Copy the shape from an existing test rather than from memory.
 
+   A deprecation has two sides, and equivalence between old and new is not
+   enough on its own: assert that the deprecated path still emits the notice,
+   and separately that the replacement executes without emitting one.
+   Equivalence alone passes a replacement implemented by calling the method it
+   replaces, which then emits a deprecation at every call site that migrated
+   to it, silently turning "use the replacement" into "get warned forever."
+
+   There is no dedicated assertion for the absence of a deprecation.
+   `expectUserDeprecationMessage` only asserts one is emitted. The established
+   shape, seen in `DotenvTest::testNoDeprecationWarning`,
+   `ResolveReferencesToAliasesPassTest::testNoDeprecationNoticeWhenReferencedByDeprecatedAlias`,
+   and `ResponseTest::testNoDeprecationsAreTriggered`, is a plain test method,
+   not `#[Group('legacy')]` and not `#[IgnoreDeprecations]`, that calls the
+   replacement and then `$this->addToAssertionCount(1)`. The check itself is
+   environmental rather than an API call: `SYMFONY_DEPRECATIONS_HELPER=max[self]=0`
+   fails the run if a self-triggered deprecation surfaces in a test not marked
+   legacy, so a replacement that still calls the deprecated method underneath
+   fails this test even though it asserts nothing about deprecations directly.
+
 ## Constraints
 
 - Do not modify anything outside `target.paths`. C4 fails the change if you do.
