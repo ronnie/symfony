@@ -4,6 +4,7 @@ CHANGELOG
 8.2
 ---
 
+ * Add `InputOption::valueMode()` and deprecate `InputOption::isValueRequired()`
  * Add `LockableTrait::setLockFactory()`, autowired with the lock factory of the resource named `console` when the app declares one
  * Allow `#[AsCommand]` to list `InputOption`s to add after the ones the parameters of the command declare
  * Register a class-level `#[AsCommand]` without `__invoke()` as the command grouping its method-level ones
