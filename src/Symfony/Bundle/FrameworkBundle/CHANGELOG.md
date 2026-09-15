@@ -4,6 +4,7 @@ CHANGELOG
 8.2
 ---
 
+ * Add the `configure_container` option to `WebTestCase::createClient()` to configure the container after every kernel reboot
  * Deprecate `Command\RouterMatchCommand`, use the one from the Routing component instead
  * Deprecate `DependencyInjection\Compiler\TranslationLintCommandPass`, `DependencyInjection\Compiler\TranslationUpdateCommandPass`, `DependencyInjection\Compiler\AssetsContextPass` and `DependencyInjection\Compiler\AddValidatorSecurityExpressionLanguageProviderPass`, use the ones from the Translation, Asset and Validator components instead
  * Deprecate `Routing\RouteLoaderInterface`, use the `#[AsRouteLoader]` attribute from the Routing component instead
@@ -38,6 +39,7 @@ CHANGELOG
  * Add `framework.mailer.smime_encrypter.certificates`, `on_missing_certificate` and `encrypt_for_sender` options
  * Add `framework.mailer.pgp_signer` and `framework.mailer.pgp_encrypter` options to sign and encrypt messages with PGP/MIME
  * Allow `framework.rate_limiter.*.limiters` as a map to fix the `key` of individual sub-limiters of a compound rate limiter
+ * Register `KeyManagementBundle` when `symfony/key-management` is installed
  * Add `framework.cache.default_provider` to configure `cache.app` with a DSN
  * Add `framework.messenger.reject_redelivered_messages` to allow disabling the `RejectRedeliveredMessageMiddleware`
  * Add `uri_signer.expiration` option that allows configuring the default URI signer expiration
@@ -60,6 +62,7 @@ CHANGELOG
  * Add `framework.profiler.excluded_paths` and `framework.profiler.excluded_http_codes` to skip profiling requests matching a path or answered with a given HTTP status code
  * Add `framework.property_access.wildcard_reads` option to read every element of a collection through a `[*]` path
  * Instantiate on the console only the bundles that override the deprecated `Bundle::registerCommands()` method
+ * Add `MessengerAssertionsTrait` to `KernelTestCase`, with `assertQueuedMessageCount()`, `getQueuedMessages()`, `getMessengerTransport()` and `consumeQueuedMessages()` for in-memory Messenger transports
 
 8.1
 ---

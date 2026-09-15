@@ -4,6 +4,10 @@ CHANGELOG
 8.2
 ---
 
+ * Make `OidcLoginAuthenticator` a `ReAuthenticationEntryPointInterface`, starting an authorization request with `prompt=login` and the previous ID token as `id_token_hint`
+ * Add `ReAuthenticationEntryPointInterface`, started by `ExceptionListener` when `IS_AUTHENTICATED_RECENTLY` is denied
+ * Stamp the `auth_time` token attribute from the OIDC ID token claim of the same name, so `max_age` and `IS_AUTHENTICATED_RECENTLY` agree
+ * Add `AuthenticationTimeListener`, which records the time of the last interactive authentication as the `auth_time` token attribute
  * Add `allowed_time_drift` option to `OidcTokenHandler` to configure time tolerance for token validation (`iat`, `nbf`, `exp` claims)
  * Expose the OAuth2 scopes an access token was granted as the `oauth2_scope` token attribute, read from the `scope` or `scp` claim
  * Add `OAuth2ScopeVoter` to require scopes of the access token, all the ones an `OAUTH2_SCOPE(...)` attribute lists
@@ -40,6 +44,8 @@ CHANGELOG
  * Add the `$resourceMetadataUri` argument to `AccessTokenAuthenticator`, advertised in the `resource_metadata` parameter of the `WWW-Authenticate` header (RFC 9728)
  * Widen the `$audience` argument of `OidcTokenHandler` and `OidcTokenGenerator` and the `$audiences` argument of `Oauth2TokenHandler` to take one identifier as a string or several as a list, one of which the `aud` claim must name
  * Add `FallbackAuthenticationEntryPointInterface` for an entry point that only stands in for a firewall declaring no other one, and make `AccessTokenAuthenticator` one, so that a request carrying no access token gets the RFC 6750 challenge instead of a bare 401
+ * Add `PrivateKeyJwt` and `ClientSecretJwt`, which authenticate the OAuth2 client at the token endpoint with a JWT assertion it signs itself, respectively with its private key and with its secret (RFC 7523, OIDC Core 1.0 §9)
+ * Add `OidcAuthorizationRequestEvent` and the `$eventDispatcher` argument to `OidcLoginAuthenticator`, so that the extra parameters of the OIDC authorization request can be computed per request
 
 8.1
 ---

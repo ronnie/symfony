@@ -23,13 +23,17 @@ use Psr\Clock\ClockInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Clock\Clock;
 use Symfony\Component\Clock\MockClock;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\JsonMockResponse;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
+use Symfony\Component\Security\Core\Authorization\Voter\AuthenticatedVoter;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\Exception\UnsupportedUserException;
 use Symfony\Component\Security\Core\User\AttributesBasedUserProviderInterface;
@@ -47,9 +51,11 @@ use Symfony\Component\Security\Http\Authenticator\OidcLoginAuthenticator;
 use Symfony\Component\Security\Http\Authenticator\Passport\Badge\RememberMeBadge;
 use Symfony\Component\Security\Http\Authenticator\Passport\Badge\UserBadge;
 use Symfony\Component\Security\Http\Authenticator\Passport\SelfValidatingPassport;
+use Symfony\Component\Security\Http\Event\OidcAuthorizationRequestEvent;
 use Symfony\Component\Security\Http\HttpUtils;
 use Symfony\Component\Security\Http\Oidc\OidcDiscovery;
 use Symfony\Component\Security\Http\SecurityRequestAttributes;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 #[AllowMockObjectsWithoutExpectations]
 class OidcLoginAuthenticatorTest extends TestCase
@@ -768,6 +774,93 @@ class OidcLoginAuthenticatorTest extends TestCase
         $this->assertSame('S256', $params['code_challenge_method']);
     }
 
+    public function testStartReAuthenticationForcesTheProviderToPromptAgain()
+    {
+        $params = $this->startReAuthentication($this->createAuthenticator(), 'previous.id.token');
+
+        $this->assertSame('login', $params['prompt']);
+        // the provider is told which End-User to re-authenticate rather than offering a picker
+        $this->assertSame('previous.id.token', $params['id_token_hint']);
+        // and it stays an ordinary authorization request, so the callback works unchanged
+        $this->assertSame('code', $params['response_type']);
+        $this->assertNotEmpty($params['state']);
+        $this->assertNotEmpty($params['nonce']);
+        $this->assertNotEmpty($params['code_challenge']);
+    }
+
+    public function testStartReAuthenticationOverridesAConfiguredPrompt()
+    {
+        // "prompt=none" is the one that would defeat re-authentication entirely, silently
+        $params = $this->startReAuthentication($this->createAuthenticator(authorizationParams: ['prompt' => 'none']), 'previous.id.token');
+
+        $this->assertSame('login', $params['prompt']);
+    }
+
+    public function testAListenerCannotDefeatAReAuthentication()
+    {
+        $dispatcher = new EventDispatcher();
+        $dispatcher->addListener(OidcAuthorizationRequestEvent::class, static function (OidcAuthorizationRequestEvent $event) {
+            $event->setParam('prompt', 'none');
+            $event->removeParam('id_token_hint');
+        });
+
+        $params = $this->startReAuthentication($this->createAuthenticator(eventDispatcher: $dispatcher), 'previous.id.token');
+
+        $this->assertSame('login', $params['prompt']);
+        $this->assertSame('previous.id.token', $params['id_token_hint']);
+    }
+
+    public function testAListenerStillShapesAnOrdinaryAuthorizationRequest()
+    {
+        $dispatcher = new EventDispatcher();
+        $dispatcher->addListener(OidcAuthorizationRequestEvent::class, static function (OidcAuthorizationRequestEvent $event) {
+            $event->setParam('prompt', 'consent');
+        });
+
+        $authenticator = $this->createAuthenticator(eventDispatcher: $dispatcher);
+        $request = Request::create('/protected');
+        $request->setSession(new Session(new MockArraySessionStorage()));
+
+        $params = $this->parseAuthorizationParams($authenticator->start($request));
+
+        $this->assertSame('consent', $params['prompt']);
+        $this->assertArrayNotHasKey('id_token_hint', $params);
+    }
+
+    public function testStartReAuthenticationWithoutAPreviousIdToken()
+    {
+        // the session may have been opened by another authenticator on the same firewall
+        $token = new UsernamePasswordToken(new InMemoryUser('wouter', 'password', ['ROLE_USER']), 'main', ['ROLE_USER']);
+        $request = Request::create('/protected');
+        $request->setSession(new Session(new MockArraySessionStorage()));
+
+        $params = $this->parseAuthorizationParams($this->createAuthenticator()->startReAuthentication($request, $token));
+
+        $this->assertSame('login', $params['prompt']);
+        $this->assertArrayNotHasKey('id_token_hint', $params);
+    }
+
+    private function startReAuthentication(OidcLoginAuthenticator $authenticator, string $idToken): array
+    {
+        $token = new UsernamePasswordToken(new InMemoryUser('wouter', 'password', ['ROLE_USER']), 'main', ['ROLE_USER']);
+        $token->setAttribute('oidc_id_token', $idToken);
+
+        $request = Request::create('/protected');
+        $request->setSession(new Session(new MockArraySessionStorage()));
+
+        return $this->parseAuthorizationParams($authenticator->startReAuthentication($request, $token));
+    }
+
+    private function parseAuthorizationParams(Response $response): array
+    {
+        $this->assertInstanceOf(RedirectResponse::class, $response);
+
+        $params = [];
+        parse_str(parse_url($response->getTargetUrl(), \PHP_URL_QUERY), $params);
+
+        return $params;
+    }
+
     #[DataProvider('provideScopes')]
     public function testStartRequestsTheConfiguredScopes(array|string $scope, string $expectedScope)
     {
@@ -910,6 +1003,92 @@ class OidcLoginAuthenticatorTest extends TestCase
         $this->expectExceptionMessage('The authorization request parameter(s) "state", "code_challenge" are managed by the authenticator');
 
         $this->createAuthenticator(authorizationParams: ['state' => 'fixed', 'code_challenge' => '', 'prompt' => 'consent']);
+    }
+
+    public function testStartDispatchesTheAuthorizationRequestEvent()
+    {
+        $dispatcher = new EventDispatcher();
+        // two listeners, each touching its own parameter, and one dropping a configured one
+        $dispatcher->addListener(OidcAuthorizationRequestEvent::class, static function (OidcAuthorizationRequestEvent $event) {
+            $event->removeParam('prompt');
+            $event->setParam('ui_locales', 'es-ES');
+        });
+        $dispatcher->addListener(OidcAuthorizationRequestEvent::class, static function (OidcAuthorizationRequestEvent $event) {
+            $event->setParam('login_hint', 'user@example.com');
+        });
+
+        $authenticator = $this->createAuthenticator(authorizationParams: ['prompt' => 'consent', 'ui_locales' => 'fr-FR'], eventDispatcher: $dispatcher);
+        $request = Request::create('/protected');
+        $request->setSession(new Session(new MockArraySessionStorage()));
+
+        $location = $authenticator->start($request)->getTargetUrl();
+        $params = [];
+        parse_str(parse_url($location, \PHP_URL_QUERY), $params);
+
+        $this->assertArrayNotHasKey('prompt', $params);
+        $this->assertSame('es-ES', $params['ui_locales']);
+        $this->assertSame('user@example.com', $params['login_hint']);
+        // the managed parameters are still the ones the authenticator computed
+        $this->assertSame('code', $params['response_type']);
+        $this->assertNotEmpty($params['state']);
+    }
+
+    public function testTheAuthorizationRequestEventParamsCanBeReplacedAtOnce()
+    {
+        $dispatcher = new EventDispatcher();
+        $dispatcher->addListener(OidcAuthorizationRequestEvent::class, static function (OidcAuthorizationRequestEvent $event) {
+            $event->setParams(['login_hint' => 'user@example.com']);
+        });
+
+        $authenticator = $this->createAuthenticator(authorizationParams: ['prompt' => 'consent', 'ui_locales' => 'fr-FR'], eventDispatcher: $dispatcher);
+        $request = Request::create('/protected');
+        $request->setSession(new Session(new MockArraySessionStorage()));
+
+        $location = $authenticator->start($request)->getTargetUrl();
+        $params = [];
+        parse_str(parse_url($location, \PHP_URL_QUERY), $params);
+
+        $this->assertArrayNotHasKey('prompt', $params);
+        $this->assertArrayNotHasKey('ui_locales', $params);
+        $this->assertSame('user@example.com', $params['login_hint']);
+    }
+
+    public function testTheAuthorizationRequestEventCarriesTheRequestAndFirewallName()
+    {
+        $dispatched = null;
+        $dispatcher = new EventDispatcher();
+        $dispatcher->addListener(OidcAuthorizationRequestEvent::class, static function (OidcAuthorizationRequestEvent $event) use (&$dispatched) {
+            $dispatched = $event;
+        });
+
+        $authenticator = $this->createAuthenticator(['firewall_name' => 'oidc'], authorizationParams: ['prompt' => 'consent'], eventDispatcher: $dispatcher);
+        $request = Request::create('/protected');
+        $request->setSession(new Session(new MockArraySessionStorage()));
+
+        $authenticator->start($request);
+
+        $this->assertInstanceOf(OidcAuthorizationRequestEvent::class, $dispatched);
+        $this->assertSame($request, $dispatched->getRequest());
+        $this->assertSame('oidc', $dispatched->getFirewallName());
+        $this->assertSame(['prompt' => 'consent'], $dispatched->getParams());
+    }
+
+    public function testTheAuthorizationRequestEventCannotSetTheManagedParams()
+    {
+        $dispatcher = new EventDispatcher();
+        $dispatcher->addListener(OidcAuthorizationRequestEvent::class, static function (OidcAuthorizationRequestEvent $event) {
+            $event->setParam('state', 'fixed');
+            $event->setParam('redirect_uri', 'https://attacker.example.com');
+        });
+
+        $authenticator = $this->createAuthenticator(eventDispatcher: $dispatcher);
+        $request = Request::create('/protected');
+        $request->setSession(new Session(new MockArraySessionStorage()));
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('set the authorization request parameter(s) "state", "redirect_uri", which the authenticator manages');
+
+        $authenticator->start($request);
     }
 
     public function testStartSendsTheConfiguredMaxAge()
@@ -1147,6 +1326,70 @@ class OidcLoginAuthenticatorTest extends TestCase
 
         $this->assertSame('refresh-123', $token->getAttribute('oidc_refresh_token'));
         $this->assertSame($clock->now()->getTimestamp() + 300, $token->getAttribute('oidc_access_token_expires_at'));
+    }
+
+    public function testCreateTokenStampsTheAuthenticationTimeFromTheAuthTimeClaim()
+    {
+        $nonce = bin2hex(random_bytes(16));
+        $state = bin2hex(random_bytes(16));
+        $clock = new MockClock('2026-09-06 12:00:00');
+        $authTime = $clock->now()->getTimestamp() - 3600;
+
+        $this->oidcClient->method('exchangeCode')->willReturn([
+            'access_token' => 'access-123',
+            'id_token' => $this->buildIdToken(['nonce' => $nonce, 'auth_time' => $authTime]),
+        ]);
+        $this->oidcClient->method('fetchUserInfo')->willReturn(['sub' => 'user-42']);
+
+        $authenticator = $this->createAuthenticator(clock: $clock);
+        $passport = $authenticator->authenticate($this->createCallbackRequest($state, $nonce));
+
+        $token = $authenticator->createToken($passport, 'main');
+
+        // the silent SSO case: the provider says the user authenticated an hour ago,
+        // so IS_AUTHENTICATED_RECENTLY must not treat this login as fresh
+        $this->assertSame($authTime, $token->getAttribute(AuthenticatedVoter::AUTH_TIME_ATTRIBUTE));
+    }
+
+    public function testCreateTokenNeverDatesTheAuthenticationTimeInTheFuture()
+    {
+        $nonce = bin2hex(random_bytes(16));
+        $state = bin2hex(random_bytes(16));
+        $clock = new MockClock('2026-09-06 12:00:00');
+
+        $this->oidcClient->method('exchangeCode')->willReturn([
+            'access_token' => 'access-123',
+            'id_token' => $this->buildIdToken(['nonce' => $nonce, 'auth_time' => $clock->now()->getTimestamp() + 86400]),
+        ]);
+        $this->oidcClient->method('fetchUserInfo')->willReturn(['sub' => 'user-42']);
+
+        $authenticator = $this->createAuthenticator(clock: $clock);
+        $passport = $authenticator->authenticate($this->createCallbackRequest($state, $nonce));
+
+        $token = $authenticator->createToken($passport, 'main');
+
+        $this->assertSame($clock->now()->getTimestamp(), $token->getAttribute(AuthenticatedVoter::AUTH_TIME_ATTRIBUTE));
+    }
+
+    public function testCreateTokenLeavesTheAuthenticationTimeUnsetWithoutTheClaim()
+    {
+        // the claim is only mandatory when "max_age" is requested; without it
+        // AuthenticationTimeListener falls back to stamping the login instant
+        $nonce = bin2hex(random_bytes(16));
+        $state = bin2hex(random_bytes(16));
+
+        $this->oidcClient->method('exchangeCode')->willReturn([
+            'access_token' => 'access-123',
+            'id_token' => $this->buildIdToken(['nonce' => $nonce]),
+        ]);
+        $this->oidcClient->method('fetchUserInfo')->willReturn(['sub' => 'user-42']);
+
+        $authenticator = $this->createAuthenticator();
+        $passport = $authenticator->authenticate($this->createCallbackRequest($state, $nonce));
+
+        $token = $authenticator->createToken($passport, 'main');
+
+        $this->assertFalse($token->hasAttribute(AuthenticatedVoter::AUTH_TIME_ATTRIBUTE));
     }
 
     public function testCreateTokenReportsAMissingRefreshTokenAndExpiryAsNull()
@@ -1548,7 +1791,7 @@ class OidcLoginAuthenticatorTest extends TestCase
         $this->assertInstanceOf(OidcLoginAuthenticator::class, $this->createAuthenticator(['pkce_enabled' => false]));
     }
 
-    private function createAuthenticator(array $options = [], ?UserProviderInterface $userProvider = null, array $authorizationParams = [], ?OidcSignatureVerifier $signatureVerifier = null, ?ClockInterface $clock = null): OidcLoginAuthenticator
+    private function createAuthenticator(array $options = [], ?UserProviderInterface $userProvider = null, array $authorizationParams = [], ?OidcSignatureVerifier $signatureVerifier = null, ?ClockInterface $clock = null, ?EventDispatcherInterface $eventDispatcher = null): OidcLoginAuthenticator
     {
         return new OidcLoginAuthenticator(
             new HttpUtils(),
@@ -1563,6 +1806,7 @@ class OidcLoginAuthenticatorTest extends TestCase
             $authorizationParams,
             $signatureVerifier,
             $clock ?? new Clock(),
+            $eventDispatcher,
         );
     }
 }

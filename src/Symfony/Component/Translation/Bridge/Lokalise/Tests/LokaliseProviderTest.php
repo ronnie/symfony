@@ -13,6 +13,7 @@ namespace Symfony\Component\Translation\Bridge\Lokalise\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
+use PHPUnit\Framework\Attributes\TestWith;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Symfony\Component\HttpClient\MockHttpClient;
@@ -881,6 +882,62 @@ class LokaliseProviderTest extends ProviderTestCase
 
         // FilteringProvider narrows domains and locales with array_intersect(), which preserves the original keys.
         $provider->read([1 => 'validators'], [1 => 'en']);
+    }
+
+    #[TestWith([[], ['en']])]
+    #[TestWith([['messages'], []])]
+    #[TestWith([[], []])]
+    public function testReadWithoutDomainsOrLocalesReadsEverything(array $domains, array $locales)
+    {
+        $expectedDomains = $domains ?: ['messages', 'validators'];
+        // Lokalise returns language codes with a "-" separator
+        $expectedLanguages = $locales ?: ['en', 'pt-BR'];
+        $expectedLocales = array_map(static fn (string $language) => str_replace('-', '_', $language), $expectedLanguages);
+
+        $response = function (string $method, string $url, array $options = []) use ($domains, $locales, $expectedDomains, $expectedLanguages): ResponseInterface {
+            $this->assertSame('https://api.lokalise.com/api2/projects/PROJECT_ID/files/export', $url);
+
+            // an empty filter is no filter at all for Lokalise
+            $body = json_decode($options['body'], true);
+            $this->assertSame($locales, $body['filter_langs']);
+            $this->assertSame(array_map(static fn (string $domain) => $domain.'.xliff', $domains), $body['filter_filenames']);
+
+            $files = [];
+            foreach ($expectedLanguages as $language) {
+                $locale = str_replace('-', '_', $language);
+
+                foreach ($expectedDomains as $domain) {
+                    $files[$language][$domain.'.xliff'] = ['content' => <<<XLIFF
+                        <?xml version="1.0" encoding="UTF-8"?>
+                        <xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+                          <file source-language="en" target-language="$language" datatype="plaintext" original="file.ext">
+                            <body>
+                              <trans-unit id="a" resname="a">
+                                <source>a</source>
+                                <target>{$domain}_{$locale}_a</target>
+                              </trans-unit>
+                            </body>
+                          </file>
+                        </xliff>
+                        XLIFF];
+                }
+            }
+
+            return new JsonMockResponse(['files' => $files]);
+        };
+
+        $provider = self::createProvider((new MockHttpClient($response))->withOptions([
+            'base_uri' => 'https://api.lokalise.com/api2/projects/PROJECT_ID/',
+            'headers' => ['X-Api-Token' => 'API_KEY'],
+        ]), new XliffFileLoader(), $this->getLogger(), $this->getDefaultLocale(), 'api.lokalise.com');
+
+        $translatorBag = $provider->read($domains, $locales);
+
+        $this->assertSame($expectedLocales, array_map(static fn (MessageCatalogue $catalogue) => $catalogue->getLocale(), $translatorBag->getCatalogues()));
+        foreach ($expectedLocales as $locale) {
+            $this->assertEqualsCanonicalizing($expectedDomains, $translatorBag->getCatalogue($locale)->getDomains());
+            $this->assertSame(['a' => $expectedDomains[0].'_'.$locale.'_a'], $translatorBag->getCatalogue($locale)->all($expectedDomains[0]));
+        }
     }
 
     #[RequiresPhpExtension('zip')]

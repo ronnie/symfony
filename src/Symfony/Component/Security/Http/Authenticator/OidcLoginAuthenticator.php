@@ -18,6 +18,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Session\SessionInterface;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
+use Symfony\Component\Security\Core\Authorization\Voter\AuthenticatedVoter;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\User\UserProviderInterface;
 use Symfony\Component\Security\Http\Authentication\AuthenticationFailureHandlerInterface;
@@ -30,9 +31,12 @@ use Symfony\Component\Security\Http\Authenticator\Passport\Passport;
 use Symfony\Component\Security\Http\Authenticator\Passport\SelfValidatingPassport;
 use Symfony\Component\Security\Http\Authenticator\Token\PostAuthenticationToken;
 use Symfony\Component\Security\Http\EntryPoint\AuthenticationEntryPointInterface;
+use Symfony\Component\Security\Http\EntryPoint\ReAuthenticationEntryPointInterface;
+use Symfony\Component\Security\Http\Event\OidcAuthorizationRequestEvent;
 use Symfony\Component\Security\Http\HttpUtils;
 use Symfony\Component\Security\Http\Oidc\OidcDiscovery;
 use Symfony\Component\Security\Http\SecurityRequestAttributes;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Authenticator for the OpenID Connect Authorization Code Flow.
@@ -41,7 +45,7 @@ use Symfony\Component\Security\Http\SecurityRequestAttributes;
  *
  * @author Mathieu Santostefano <msantostefano@proton.me>
  */
-final class OidcLoginAuthenticator extends AbstractAuthenticator implements AuthenticationEntryPointInterface, InteractiveAuthenticatorInterface
+final class OidcLoginAuthenticator extends AbstractAuthenticator implements AuthenticationEntryPointInterface, InteractiveAuthenticatorInterface, ReAuthenticationEntryPointInterface
 {
     private const MAX_CONCURRENT_ATTEMPTS = 5;
 
@@ -59,16 +63,20 @@ final class OidcLoginAuthenticator extends AbstractAuthenticator implements Auth
      * thing tying the token endpoint response to the provider beyond the TLS verification.
      * Neither can be turned off for such a client, which is what this constructor refuses.
      *
-     * @param array<string, string>      $authorizationParams Additional parameters of the authorization request, e.g.
-     *                                                        "prompt" or "ui_locales"; the protocol parameters the
-     *                                                        authenticator manages itself are rejected
-     * @param OidcSignatureVerifier|null $signatureVerifier   Verifies the ID token signature against the provider JWKS,
-     *                                                        or null to decode the token without verifying it, which
-     *                                                        OIDC Core 1.0, Section 3.1.3.7, item 6 only allows as long
-     *                                                        as the token endpoint request verifies TLS
-     * @param ClockInterface|null        $clock               Turns the "expires_in" of the token endpoint response into
-     *                                                        the absolute expiry the security token carries, or null to
-     *                                                        use the clock of the "symfony/clock" component
+     * @param array<string, string>         $authorizationParams Additional parameters of the authorization request, e.g.
+     *                                                           "prompt" or "ui_locales"; the protocol parameters the
+     *                                                           authenticator manages itself are rejected. Listen to
+     *                                                           OidcAuthorizationRequestEvent to compute them per request
+     * @param OidcSignatureVerifier|null    $signatureVerifier   Verifies the ID token signature against the provider JWKS,
+     *                                                           or null to decode the token without verifying it, which
+     *                                                           OIDC Core 1.0, Section 3.1.3.7, item 6 only allows as long
+     *                                                           as the token endpoint request verifies TLS
+     * @param ClockInterface|null           $clock               Turns the "expires_in" of the token endpoint response into
+     *                                                           the absolute expiry the security token carries, or null to
+     *                                                           use the clock of the "symfony/clock" component
+     * @param EventDispatcherInterface|null $eventDispatcher     Dispatches OidcAuthorizationRequestEvent before the user is
+     *                                                           redirected to the provider, or null to always send the
+     *                                                           authorization request $authorizationParams describes
      */
     public function __construct(
         private readonly HttpUtils $httpUtils,
@@ -83,6 +91,7 @@ final class OidcLoginAuthenticator extends AbstractAuthenticator implements Auth
         private readonly array $authorizationParams = [],
         private readonly ?OidcSignatureVerifier $signatureVerifier = null,
         ?ClockInterface $clock = null,
+        private readonly ?EventDispatcherInterface $eventDispatcher = null,
     ) {
         if (null === $clock && !class_exists(Clock::class)) {
             throw new \LogicException(\sprintf('The "symfony/clock" component is required to build "%s" without a clock. Try running "composer require symfony/clock", or pass any PSR-20 clock to the constructor.', self::class));
@@ -135,6 +144,37 @@ final class OidcLoginAuthenticator extends AbstractAuthenticator implements Auth
 
     public function start(Request $request, ?AuthenticationException $authException = null): Response
     {
+        return $this->startAuthorizationRequest($request);
+    }
+
+    /**
+     * "prompt=login" is what OIDC Core 1.0, Section 3.1.2.1 defines for this: the provider
+     * prompts the End-User for credentials again instead of answering from the session it
+     * already holds. The previous ID token goes along as "id_token_hint" so the provider
+     * knows which End-User is being re-authenticated rather than offering a picker.
+     *
+     * "prompt" is a SHOULD in the specification. Configure "max_age" as well if the provider
+     * has to be obliged rather than asked: that one the client verifies, so a provider
+     * ignoring it fails the "auth_time" check instead of quietly returning the stale
+     * authentication that was denied in the first place.
+     */
+    public function startReAuthentication(Request $request, TokenInterface $token): Response
+    {
+        $forcedParams = ['prompt' => 'login'];
+
+        if (\is_string($idToken = $token->hasAttribute('oidc_id_token') ? $token->getAttribute('oidc_id_token') : null)) {
+            $forcedParams['id_token_hint'] = $idToken;
+        }
+
+        return $this->startAuthorizationRequest($request, $forcedParams);
+    }
+
+    /**
+     * @param array<string, string> $forcedParams Parameters applied after "authorization_params"
+     *                                            and after the event, so that neither can drop them
+     */
+    private function startAuthorizationRequest(Request $request, array $forcedParams = []): Response
+    {
         $session = $this->getSession($request);
         $prefix = $this->getSessionPrefix();
 
@@ -168,7 +208,24 @@ final class OidcLoginAuthenticator extends AbstractAuthenticator implements Auth
             $params['max_age'] = (string) $this->options['max_age'];
         }
 
-        $params = array_merge($params, $this->authorizationParams);
+        $extraParams = $this->authorizationParams;
+
+        if (null !== $this->eventDispatcher) {
+            $event = new OidcAuthorizationRequestEvent($request, $this->options['firewall_name'], $extraParams);
+            $this->eventDispatcher->dispatch($event);
+            $extraParams = $event->getParams();
+
+            if ($managed = array_intersect_key($extraParams, array_flip(self::MANAGED_PARAMS))) {
+                throw new \LogicException(\sprintf('A listener of "%s" set the authorization request parameter(s) "%s", which the authenticator manages and does not take from a listener.', OidcAuthorizationRequestEvent::class, implode('", "', array_keys($managed))));
+            }
+        }
+
+        $params += $extraParams;
+
+        // applied after the event on purpose: a listener answering with "prompt=none", or
+        // simply dropping the key, would otherwise turn a re-authentication into a silent
+        // no-op and leave the user looping through the provider
+        $params = array_merge($params, $forcedParams);
 
         // each pending attempt lives under its own session key, carrying the state, so
         // that concurrent logins started from several tabs write distinct entries instead
@@ -290,6 +347,10 @@ final class OidcLoginAuthenticator extends AbstractAuthenticator implements Auth
             new UserBadge($claims[$this->options['user_identifier_claim']], $this->userProvider->loadUserByIdentifier(...), $claims),
         );
         $passport->setAttribute('oidc_token_data', $tokenData);
+        // "auth_time" tells when the user actually authenticated at the provider, which a
+        // silent SSO login can place well in the past; it is only validated when "max_age"
+        // is requested, so anything non-numeric is discarded rather than trusted
+        $passport->setAttribute('oidc_auth_time', is_numeric($idTokenClaims['auth_time'] ?? null) ? (int) $idTokenClaims['auth_time'] : null);
 
         return $passport;
     }
@@ -307,6 +368,12 @@ final class OidcLoginAuthenticator extends AbstractAuthenticator implements Auth
             // a refresh token when it was asked for one, and "expires_in" is optional
             $token->setAttribute('oidc_refresh_token', $tokenData['refresh_token'] ?? null);
             $token->setAttribute('oidc_access_token_expires_at', is_numeric($tokenData['expires_in'] ?? null) ? $this->clock->now()->getTimestamp() + (int) $tokenData['expires_in'] : null);
+        }
+
+        // a provider whose clock runs ahead would otherwise extend the window that
+        // IS_AUTHENTICATED_RECENTLY grants, so the claim never dates from the future
+        if (null !== $authTime = $passport->getAttribute('oidc_auth_time')) {
+            $token->setAttribute(AuthenticatedVoter::AUTH_TIME_ATTRIBUTE, min($authTime, $this->clock->now()->getTimestamp()));
         }
 
         return $token;
