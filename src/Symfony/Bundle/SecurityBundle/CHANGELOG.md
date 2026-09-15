@@ -4,6 +4,8 @@ CHANGELOG
 8.2
 ---
 
+ * Add the `re_authentication_entry_point` firewall option, pointing at a `ReAuthenticationEntryPointInterface` service used when `IS_AUTHENTICATED_RECENTLY` is denied
+ * Add the `recent_authentication_lifetime` option, the number of seconds an interactive authentication keeps granting `IS_AUTHENTICATED_RECENTLY`
  * Add the `security.expression_language_provider` service to evaluate the security functions outside of authorization expressions
  * Add the `debug:roles` command to inspect the role hierarchy
  * Add `allowed_time_drift` option to the OIDC token handler configuration
@@ -38,6 +40,8 @@ CHANGELOG
  * Pick an authenticator implementing `FallbackAuthenticationEntryPointInterface` as the firewall entry point only when no other authenticator provides one
  * Add the `http_client` option to the `oidc_login` authenticator, naming the HTTP client its calls to the provider are made with
  * Allow the `audience` option of the `oidc` token handler to name several identifiers as a list, as the `oauth2` one does
+ * Add the `client_secret_jwt` and `private_key_jwt` client authentication methods to the `oidc_login` authenticator, which authenticate the client at the token endpoint with a JWT assertion it signs itself (RFC 7523, OIDC Core 1.0 §9)
+ * Dispatch `OidcAuthorizationRequestEvent` from the `oidc_login` authenticator through the firewall event dispatcher, so that a listener can tailor the `authorization_params` of each authorization request
 
 8.1
 ---

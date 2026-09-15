@@ -257,6 +257,94 @@ class PhraseProviderTest extends TestCase
         $provider->read([$domain], [$locale]);
     }
 
+    public function testReadWithoutLocales()
+    {
+        $this->getLoader()
+            ->method('load')
+            ->willReturnCallback(static fn (string $content, string $locale, string $domain) => new MessageCatalogue($locale, [$domain => ['a' => $content]]));
+
+        $responses = [
+            'init locales' => $this->getInitLocaleResponseMock(),
+            'download de' => $this->getDownloadLocaleResponseMock('messages', '5fea6ed5c21767730918a9400e420832', 'trans_de_a'),
+            'download en-GB' => $this->getDownloadLocaleResponseMock('messages', '13604ec993beefcdaba732812cdb828c', 'trans_en_GB_a'),
+        ];
+
+        $provider = $this->createProvider(httpClient: $httpClient = (new MockHttpClient($responses))->withOptions([
+            'base_uri' => 'https://api.phrase.com/api/v2/projects/1/',
+            'headers' => [
+                'Authorization' => 'token API_TOKEN',
+                'User-Agent' => 'myProject',
+            ],
+        ]), endpoint: 'api.phrase.com/api/v2');
+
+        $translatorBag = $provider->read(['messages'], []);
+
+        $this->assertSame(['de', 'en_GB'], array_map(static fn (MessageCatalogue $catalogue) => $catalogue->getLocale(), $translatorBag->getCatalogues()));
+        $this->assertSame(['a' => 'trans_en_GB_a'], $translatorBag->getCatalogue('en_GB')->all('messages'));
+        // no locale is created on the way
+        $this->assertSame(\count($responses), $httpClient->getRequestsCount());
+    }
+
+    public function testReadWithoutDomains()
+    {
+        $this->getLoader()
+            ->method('load')
+            ->willReturnCallback(static fn (string $content, string $locale, string $domain) => new MessageCatalogue($locale, [$domain => ['a' => $content]]));
+
+        $responses = [
+            'list tags' => $this->getTagsResponseMock(),
+            'init locales' => $this->getInitLocaleResponseMock(),
+            'download messages' => $this->getDownloadLocaleResponseMock('messages', '5fea6ed5c21767730918a9400e420832', 'trans_de_messages_a'),
+            'download validators' => $this->getDownloadLocaleResponseMock('validators', '5fea6ed5c21767730918a9400e420832', 'trans_de_validators_a'),
+        ];
+
+        $provider = $this->createProvider(httpClient: $httpClient = (new MockHttpClient($responses))->withOptions([
+            'base_uri' => 'https://api.phrase.com/api/v2/projects/1/',
+            'headers' => [
+                'Authorization' => 'token API_TOKEN',
+                'User-Agent' => 'myProject',
+            ],
+        ]), endpoint: 'api.phrase.com/api/v2');
+
+        $translatorBag = $provider->read([], ['de']);
+
+        // the tags of the project are the domains, under their own names
+        $this->assertSame(['a' => 'trans_de_messages_a'], $translatorBag->getCatalogue('de')->all('messages'));
+        $this->assertSame(['a' => 'trans_de_validators_a'], $translatorBag->getCatalogue('de')->all('validators'));
+        $this->assertSame(\count($responses), $httpClient->getRequestsCount());
+    }
+
+    public function testReadWithoutDomainsNorLocales()
+    {
+        $this->getLoader()
+            ->method('load')
+            ->willReturnCallback(static fn (string $content, string $locale, string $domain) => new MessageCatalogue($locale, [$domain => ['a' => $content]]));
+
+        $responses = [
+            'init locales' => $this->getInitLocaleResponseMock(),
+            'list tags' => $this->getTagsResponseMock(),
+            'download de messages' => $this->getDownloadLocaleResponseMock('messages', '5fea6ed5c21767730918a9400e420832', 'trans_de_messages_a'),
+            'download de validators' => $this->getDownloadLocaleResponseMock('validators', '5fea6ed5c21767730918a9400e420832', 'trans_de_validators_a'),
+            'download en-GB messages' => $this->getDownloadLocaleResponseMock('messages', '13604ec993beefcdaba732812cdb828c', 'trans_en_GB_messages_a'),
+            'download en-GB validators' => $this->getDownloadLocaleResponseMock('validators', '13604ec993beefcdaba732812cdb828c', 'trans_en_GB_validators_a'),
+        ];
+
+        $provider = $this->createProvider(httpClient: $httpClient = (new MockHttpClient($responses))->withOptions([
+            'base_uri' => 'https://api.phrase.com/api/v2/projects/1/',
+            'headers' => [
+                'Authorization' => 'token API_TOKEN',
+                'User-Agent' => 'myProject',
+            ],
+        ]), endpoint: 'api.phrase.com/api/v2');
+
+        $translatorBag = $provider->read([], []);
+
+        $this->assertSame(['de', 'en_GB'], array_map(static fn (MessageCatalogue $catalogue) => $catalogue->getLocale(), $translatorBag->getCatalogues()));
+        $this->assertSame(['a' => 'trans_de_validators_a'], $translatorBag->getCatalogue('de')->all('validators'));
+        $this->assertSame(['a' => 'trans_en_GB_messages_a'], $translatorBag->getCatalogue('en_GB')->all('messages'));
+        $this->assertSame(\count($responses), $httpClient->getRequestsCount());
+    }
+
     #[DataProvider('cacheKeyProvider')]
     public function testCacheKeyOptionsSort(array $options, string $expectedKey)
     {
@@ -527,6 +615,130 @@ class PhraseProviderTest extends TestCase
         $provider->read(['messages'], ['nl_NL']);
     }
 
+    public function testReadLocaleWithACustomName()
+    {
+        $this->getLoader()->method('load')->willReturn(new MessageCatalogue('de'));
+
+        $responses = [
+            'init locales' => $this->getInitLocaleResponseMock([
+                [
+                    'id' => '5fea6ed5c21767730918a9400e420832',
+                    'name' => 'German',
+                    'code' => 'de',
+                    'fallback_locale' => null,
+                ],
+            ]),
+            'download locale' => $this->getDownloadLocaleResponseMock('messages', '5fea6ed5c21767730918a9400e420832', ''),
+        ];
+
+        $provider = $this->createProvider(httpClient: (new MockHttpClient($responses))->withOptions([
+            'base_uri' => 'https://api.phrase.com/api/v2/projects/1/',
+            'headers' => [
+                'Authorization' => 'token API_TOKEN',
+                'User-Agent' => 'myProject',
+            ],
+        ]), endpoint: 'api.phrase.com/api/v2');
+
+        $provider->read(['messages'], ['de']);
+    }
+
+    public function testReadLocaleWhoseNameUsesAnUnderscore()
+    {
+        $this->getLoader()->method('load')->willReturn(new MessageCatalogue('de_DE'));
+
+        $responses = [
+            'init locales' => $this->getInitLocaleResponseMock([
+                [
+                    'id' => '5fea6ed5c21767730918a9400e420832',
+                    'name' => 'de_DE',
+                    'code' => 'de-DE',
+                    'fallback_locale' => null,
+                ],
+            ]),
+            'download locale' => $this->getDownloadLocaleResponseMock('messages', '5fea6ed5c21767730918a9400e420832', ''),
+        ];
+
+        $provider = $this->createProvider(httpClient: (new MockHttpClient($responses))->withOptions([
+            'base_uri' => 'https://api.phrase.com/api/v2/projects/1/',
+            'headers' => [
+                'Authorization' => 'token API_TOKEN',
+                'User-Agent' => 'myProject',
+            ],
+        ]), endpoint: 'api.phrase.com/api/v2');
+
+        $provider->read(['messages'], ['de_DE']);
+    }
+
+    public function testReadLocaleFoundByItsNameOnly()
+    {
+        $this->getLoader()->method('load')->willReturn(new MessageCatalogue('en_GB'));
+
+        $responses = [
+            'init locales' => $this->getInitLocaleResponseMock([
+                [
+                    'id' => '13604ec993beefcdaba732812cdb828c',
+                    'name' => 'en-GB',
+                    'code' => 'en',
+                    'fallback_locale' => null,
+                ],
+            ]),
+            'download locale' => $this->getDownloadLocaleResponseMock('messages', '13604ec993beefcdaba732812cdb828c', ''),
+        ];
+
+        $provider = $this->createProvider(httpClient: (new MockHttpClient($responses))->withOptions([
+            'base_uri' => 'https://api.phrase.com/api/v2/projects/1/',
+            'headers' => [
+                'Authorization' => 'token API_TOKEN',
+                'User-Agent' => 'myProject',
+            ],
+        ]), endpoint: 'api.phrase.com/api/v2');
+
+        $provider->read(['messages'], ['en_GB']);
+    }
+
+    public function testReadFallbackLocaleWithACustomName()
+    {
+        $this->getLoader()->method('load')->willReturn(new MessageCatalogue('en_GB'));
+
+        $responses = [
+            'init locales' => $this->getInitLocaleResponseMock([
+                [
+                    'id' => '5fea6ed5c21767730918a9400e420832',
+                    'name' => 'German',
+                    'code' => 'de',
+                    'fallback_locale' => null,
+                ],
+                [
+                    'id' => '13604ec993beefcdaba732812cdb828c',
+                    'name' => 'British English',
+                    'code' => 'en-GB',
+                    'fallback_locale' => [
+                        'id' => '5fea6ed5c21767730918a9400e420832',
+                        'name' => 'German',
+                        'code' => 'de',
+                    ],
+                ],
+            ]),
+            'download locale' => function (string $method, string $url, array $options): ResponseInterface {
+                $this->assertSame('GET', $method);
+                $this->assertStringStartsWith('https://api.phrase.com/api/v2/projects/1/locales/13604ec993beefcdaba732812cdb828c/download?', $url);
+                $this->assertSame('German', $options['query']['fallback_locale_id']);
+
+                return new MockResponse();
+            },
+        ];
+
+        $provider = $this->createProvider(httpClient: (new MockHttpClient($responses))->withOptions([
+            'base_uri' => 'https://api.phrase.com/api/v2/projects/1/',
+            'headers' => [
+                'Authorization' => 'token API_TOKEN',
+                'User-Agent' => 'myProject',
+            ],
+        ]), endpoint: 'api.phrase.com/api/v2', isFallbackLocaleEnabled: true);
+
+        $provider->read(['messages'], ['en_GB']);
+    }
+
     #[DataProvider('createLocalesExceptionsProvider')]
     public function testCreateLocaleExceptions(int $statusCode, string $expectedExceptionMessage, string $expectedLoggerMessage)
     {
@@ -725,6 +937,78 @@ class PhraseProviderTest extends TestCase
                 'User-Agent' => 'myProject',
             ],
         ]), endpoint: 'api.phrase.com/api/v2', dumper: new XliffFileDumper());
+
+        $provider->write($bag);
+    }
+
+    public function testWriteLocaleWithACustomName()
+    {
+        $this->getXliffFileDumper()->method('formatCatalogue')->willReturn('');
+
+        $responses = [
+            'init locales' => $this->getInitLocaleResponseMock([
+                [
+                    'id' => '5fea6ed5c21767730918a9400e420832',
+                    'name' => 'German',
+                    'code' => 'de',
+                    'fallback_locale' => null,
+                ],
+            ]),
+            'upload file' => $this->getUploadResponseMock('5fea6ed5c21767730918a9400e420832'),
+        ];
+
+        $provider = $this->createProvider(httpClient: (new MockHttpClient($responses))->withOptions([
+            'base_uri' => 'https://api.phrase.com/api/v2/projects/1/',
+            'headers' => [
+                'Authorization' => 'token API_TOKEN',
+                'User-Agent' => 'myProject',
+            ],
+        ]), endpoint: 'api.phrase.com/api/v2');
+
+        $bag = new TranslatorBag();
+        $bag->addCatalogue(new MessageCatalogue('de', ['messages' => ['general.back' => 'zurück']]));
+
+        $provider->write($bag);
+    }
+
+    public function testWriteCreatesUnknownLocale()
+    {
+        $this->getXliffFileDumper()->method('formatCatalogue')->willReturn('');
+
+        $responses = [
+            'init locales' => $this->getInitLocaleResponseMock([
+                [
+                    'id' => '5fea6ed5c21767730918a9400e420832',
+                    'name' => 'German',
+                    'code' => 'de',
+                    'fallback_locale' => null,
+                ],
+            ]),
+            'create locale' => function (string $method, string $url, array $options = []): ResponseInterface {
+                $this->assertSame('POST', $method);
+                $this->assertSame('https://api.phrase.com/api/v2/projects/1/locales', $url);
+                $this->assertSame('name=nl-NL&code=nl-NL&default=0', $options['body']);
+
+                return new JsonMockResponse([
+                    'id' => 'zWlsCvkeSK0EBgBVmGpZ4cySWbQ0s1Dk4',
+                    'name' => 'nl-NL',
+                    'code' => 'nl-NL',
+                    'fallback_locale' => null,
+                ], ['http_code' => 201]);
+            },
+            'upload file' => $this->getUploadResponseMock('zWlsCvkeSK0EBgBVmGpZ4cySWbQ0s1Dk4'),
+        ];
+
+        $provider = $this->createProvider(httpClient: (new MockHttpClient($responses))->withOptions([
+            'base_uri' => 'https://api.phrase.com/api/v2/projects/1/',
+            'headers' => [
+                'Authorization' => 'token API_TOKEN',
+                'User-Agent' => 'myProject',
+            ],
+        ]), endpoint: 'api.phrase.com/api/v2');
+
+        $bag = new TranslatorBag();
+        $bag->addCatalogue(new MessageCatalogue('nl_NL', ['messages' => ['general.back' => 'terug']]));
 
         $provider->write($bag);
     }
@@ -1062,13 +1346,34 @@ class PhraseProviderTest extends TestCase
         };
     }
 
-    private function getInitLocaleResponseMock(): \Closure
+    private function getTagsResponseMock(): \Closure
     {
         return function (string $method, string $url): ResponseInterface {
             $this->assertSame('GET', $method);
-            $this->assertSame('https://api.phrase.com/api/v2/projects/1/locales?per_page=100&page=1', $url);
+            $this->assertSame('https://api.phrase.com/api/v2/projects/1/tags?per_page=100&page=1&exclude_system_tags=1', $url);
 
             return new JsonMockResponse([
+                [
+                    'name' => 'messages',
+                    'keys_count' => 2,
+                    'system_tag' => false,
+                ],
+                [
+                    'name' => 'validators',
+                    'keys_count' => 1,
+                    'system_tag' => false,
+                ],
+            ]);
+        };
+    }
+
+    private function getInitLocaleResponseMock(?array $phraseLocales = null): \Closure
+    {
+        return function (string $method, string $url) use ($phraseLocales): ResponseInterface {
+            $this->assertSame('GET', $method);
+            $this->assertSame('https://api.phrase.com/api/v2/projects/1/locales?per_page=100&page=1', $url);
+
+            return new JsonMockResponse($phraseLocales ?? [
                 [
                     'id' => '5fea6ed5c21767730918a9400e420832',
                     'name' => 'de',
@@ -1086,6 +1391,30 @@ class PhraseProviderTest extends TestCase
                     ],
                 ],
             ]);
+        };
+    }
+
+    private function getUploadResponseMock(string $localeId): \Closure
+    {
+        return function (string $method, string $url, array $options = []) use ($localeId): ResponseInterface {
+            $this->assertSame('POST', $method);
+            $this->assertSame('https://api.phrase.com/api/v2/projects/1/uploads', $url);
+
+            $tested = false;
+
+            do {
+                $part = $options['body']();
+
+                if (strpos($part, 'name="locale_id"')) {
+                    $options['body']();
+                    $this->assertSame($localeId, $options['body']());
+                    $tested = true;
+                }
+            } while ('' !== $part);
+
+            $this->assertTrue($tested);
+
+            return new MockResponse('success', ['http_code' => 201]);
         };
     }
 

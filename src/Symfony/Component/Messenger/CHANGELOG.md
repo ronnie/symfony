@@ -4,6 +4,7 @@ CHANGELOG
 8.2
 ---
 
+ * Add `FailedMessageRepository` and `FailedMessageFilter` to list, inspect, remove and redispatch failed messages outside the console
  * Add `MessengerBundle`, which provides the `messenger` configuration and the services previously provided by `FrameworkBundle` under `framework.messenger`
  * Add claim check support with `ClaimCheckSerializer` and PSR-6 cache pools
  * Add routing and failure transport information and a `--message` option to the `debug:messenger` command
@@ -18,6 +19,11 @@ CHANGELOG
  * Add an optional `LoggingMiddleware` logging the processing time and memory usage of each message
  * Add the `messenger:show` command to list and inspect pending messages of a transport
  * Make the `messenger:consume` and `messenger:failed:retry` commands exit immediately when a second `SIGINT` is received
+ * Add a `transport` option to `#[AsMessageHandler]` and to the `messenger.message_handler` tag to route the handled messages to that transport and bind the handler to it
+ * Add `OutboxStamp` and `OutboxSender` to store messages in an outbox transport and forward them to their target transport when the outbox is consumed
+ * Add the `outbox` option to transports
+ * Add `StopWorkerOnIdleListener` to stop the worker as soon as no message is available
+ * Make `InMemoryTransport` implement `ListableReceiverInterface` and `MessageCountAwareInterface`
 
 8.1
 ---

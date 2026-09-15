@@ -31,7 +31,9 @@ use Symfony\Component\Messenger\Attribute\AsMessage;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\DependencyInjection\MessengerPass;
 use Symfony\Component\Messenger\DependencyInjection\RemoveMissingDependenciesPass;
+use Symfony\Component\Messenger\Failure\FailedMessageRepository;
 use Symfony\Component\Messenger\Handler\BatchHandlerInterface;
+use Symfony\Component\Messenger\Transport\Sender\OutboxSender;
 use Symfony\Component\Messenger\Transport\Serialization\ClaimCheckSerializer;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Symfony\Component\Messenger\Transport\TransportFactoryInterface;
@@ -143,6 +145,10 @@ class MessengerBundle extends AbstractBundle
                             ->scalarNode('failure_transport')
                                 ->defaultNull()
                                 ->info('Transport name to send failed messages to (after all retries have failed).')
+                            ->end()
+                            ->scalarNode('outbox')
+                                ->defaultNull()
+                                ->info('Name of the transport that stores the messages inside the current database transaction; consume that transport to forward them to this one.')
                             ->end()
                             ->arrayNode('retry_strategy')
                                 ->addDefaultsIfNotSet()
@@ -526,6 +532,19 @@ class MessengerBundle extends AbstractBundle
                     throw new LogicException(\sprintf('Invalid Messenger configuration: the failure transport "%s" is not a valid transport or service id.', $transport['failure_transport']));
                 }
             }
+
+            if ($transport['outbox']) {
+                if (!isset($config['transports'][$transport['outbox']])) {
+                    throw new LogicException(\sprintf('Invalid Messenger configuration: the outbox "%s" of the "%s" transport is not a configured transport.', $transport['outbox'], $name));
+                }
+                if ($transport['outbox'] === $name) {
+                    throw new LogicException(\sprintf('Invalid Messenger configuration: the "%s" transport cannot be its own outbox.', $name));
+                }
+
+                $container->setDefinition($outboxSenderId = '.messenger.transport.'.$name.'.outbox_sender', (new Definition(OutboxSender::class))
+                    ->setArguments([new Reference($senderAliases[$name]), new Reference($senderAliases[$transport['outbox']]), $name]));
+                $senderReferences[$name] = $senderReferences[$senderAliases[$name]] = new Reference($outboxSenderId);
+            }
         }
 
         $failureTransportReferencesByTransportName = array_map(static fn ($failureTransportName) => $senderReferences[$failureTransportName], $failureTransportsByName);
@@ -597,11 +616,16 @@ class MessengerBundle extends AbstractBundle
                     ->replaceArgument(0, $config['failure_transport']);
             }
 
+            $container->getDefinition('messenger.failed_message_repository')
+                ->replaceArgument(1, $config['failure_transport']);
+
             $failureTransportsByTransportNameServiceLocator = ServiceLocatorTagPass::register($container, $failureTransportReferencesByTransportName);
             $container->getDefinition('messenger.failure.send_failed_message_to_failure_transport_listener')
                 ->replaceArgument(0, $failureTransportsByTransportNameServiceLocator)
                 ->replaceArgument(2, $failureTransportsByName);
         } else {
+            $container->removeDefinition('messenger.failed_message_repository');
+            $container->removeAlias(FailedMessageRepository::class);
             $container->removeDefinition('messenger.failure.send_failed_message_to_failure_transport_listener');
             $container->removeDefinition('console.command.messenger_failed_messages_retry');
             $container->removeDefinition('console.command.messenger_failed_messages_show');

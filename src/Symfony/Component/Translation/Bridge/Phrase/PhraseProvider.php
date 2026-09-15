@@ -89,6 +89,18 @@ class PhraseProvider implements ProviderInterface
     {
         $translatorBag = new TranslatorBag();
 
+        if (!$locales) {
+            if (!$this->phraseLocales) {
+                $this->initLocales();
+            }
+
+            // the keys are the codes of the project locales, so reading them all goes through their codes
+            $locales = str_replace('-', '_', array_keys($this->phraseLocales));
+        }
+
+        // domains are the tags write() attaches to the keys it uploads
+        $domains = $domains ?: $this->getTags();
+
         foreach ($locales as $locale) {
             $phraseLocale = $this->getLocale($locale);
 
@@ -177,22 +189,32 @@ class PhraseProvider implements ProviderInterface
         }
 
         $phraseCode = str_replace('_', '-', $locale);
+        $phraseLocale = $this->findLocale($phraseCode) ?? $this->createLocale($phraseCode);
 
-        if (!\array_key_exists($phraseCode, $this->phraseLocales)) {
-            $this->createLocale($phraseCode);
-        }
-
-        return $this->phraseLocales[$phraseCode]['id'];
+        return $phraseLocale['id'];
     }
 
     private function getFallbackLocale(string $locale): ?string
     {
-        $phraseLocale = str_replace('_', '-', $locale);
-
-        return $this->phraseLocales[$phraseLocale]['fallback_locale']['name'] ?? null;
+        return $this->findLocale(str_replace('_', '-', $locale))['fallback_locale']['name'] ?? null;
     }
 
-    private function createLocale(string $locale): void
+    private function findLocale(string $phraseCode): ?array
+    {
+        if (isset($this->phraseLocales[$phraseCode])) {
+            return $this->phraseLocales[$phraseCode];
+        }
+
+        foreach ($this->phraseLocales as $phraseLocale) {
+            if ($phraseCode === $phraseLocale['name']) {
+                return $phraseLocale;
+            }
+        }
+
+        return null;
+    }
+
+    private function createLocale(string $locale): array
     {
         $response = $this->client->request('POST', 'locales', [
             'body' => [
@@ -213,7 +235,7 @@ class PhraseProvider implements ProviderInterface
 
         $phraseLocale = $response->toArray();
 
-        $this->phraseLocales[$phraseLocale['name']] = $phraseLocale;
+        return $this->phraseLocales[$phraseLocale['code']] = $phraseLocale;
     }
 
     private function initLocales(): void
@@ -235,12 +257,47 @@ class PhraseProvider implements ProviderInterface
             }
 
             foreach ($response->toArray() as $phraseLocale) {
-                $this->phraseLocales[$phraseLocale['name']] = $phraseLocale;
+                $this->phraseLocales[$phraseLocale['code']] = $phraseLocale;
             }
 
             $pagination = $response->getHeaders()['pagination'][0] ?? '{}';
             $page = json_decode($pagination, true)['next_page'] ?? null;
         } while (null !== $page);
+    }
+
+    /**
+     * @return string[]
+     */
+    private function getTags(): array
+    {
+        $tags = [];
+        $page = 1;
+
+        do {
+            $response = $this->client->request('GET', 'tags', [
+                'query' => [
+                    'per_page' => 100,
+                    'page' => $page,
+                    // the tags Phrase creates on its own, one per upload and one per job, are not domains
+                    'exclude_system_tags' => '1',
+                ],
+            ]);
+
+            if (200 !== $statusCode = $response->getStatusCode()) {
+                $this->logger->error(\sprintf('Unable to get tags from phrase: "%s".', $response->getContent(false)));
+
+                $this->throwProviderException($statusCode, $response, 'Unable to get tags from phrase.');
+            }
+
+            foreach ($response->toArray() as $tag) {
+                $tags[] = $tag['name'];
+            }
+
+            $pagination = $response->getHeaders()['pagination'][0] ?? '{}';
+            $page = json_decode($pagination, true)['next_page'] ?? null;
+        } while (null !== $page);
+
+        return $tags;
     }
 
     private function throwProviderException(int $statusCode, ResponseInterface $response, string $message): void
