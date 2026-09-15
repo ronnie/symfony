@@ -115,7 +115,7 @@ class JsonDescriptor extends Descriptor
             'name' => '--'.$option->getName(),
             'shortcut' => $option->getShortcut() ? '-'.str_replace('|', '|-', $option->getShortcut()) : '',
             'accept_value' => $option->acceptValue(),
-            'is_value_required' => $option->isValueRequired(),
+            'is_value_required' => InputOption::VALUE_REQUIRED === $option->valueMode(),
             'is_multiple' => $option->isArray(),
             'is_deprecated' => $option->isDeprecated(),
             'is_hidden' => $option->isHidden(),

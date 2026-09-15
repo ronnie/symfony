@@ -27,6 +27,7 @@ CHANGELOG
 8.1
 ---
 
+ * Add `InputOption::valueMode()` and deprecate `InputOption::isValueRequired()`
  * Add `ConsoleBundle` for console applications with DI, autodiscovery and autowiring
  * Pad styled `SymfonyStyle` blocks with the ECH ANSI sequence on decorated outputs so trailing cells are excluded from copy selections
  * Add optional `$container` parameter to `Application` for automatic service wiring from a PSR container
