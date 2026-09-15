@@ -12,6 +12,7 @@
 namespace Symfony\Component\Console\Tests\DependencyInjection;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -277,6 +278,7 @@ class AddConsoleCommandPassTest extends TestCase
         $this->assertSame('cmd2', $commandTester->getDisplay());
     }
 
+    #[IgnoreDeprecations]
     public function testProcessPrefixesMethodCommandsWithTheClassLevelName()
     {
         $container = new ContainerBuilder();
