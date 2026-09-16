@@ -19,6 +19,7 @@ CHANGELOG
  * Bind positional `ArrayInput` parameters to the argument slots in order
  * Allow reading several files at once through a variadic `InputFile` or `InputFile[]`-typed `#[Argument]`/`#[Option]`, the `FileQuestion` `multiple` option, and `SymfonyStyle::askFiles()`
  * Add `InputOption::HIDDEN` and `InputOption::DEPRECATED` modes
+ * Deprecate `InputOption::isValueRequired()` in favor of `InputOption::valueMode()`
  * Allow a callable for the `description` and `help` options of `#[AsCommand]`, and for the `description` option of `#[Argument]` and `#[Option]`
  * Add `GitlabCiReporter` to emit reports in the GitLab Code Quality format
  * Wrap the descriptions in `TextDescriptor` output to the terminal width; pass the `terminal_width` describe option to control it

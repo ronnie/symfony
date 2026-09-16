@@ -68,7 +68,7 @@ class MarkdownDescriptor extends Descriptor
             '#### `'.$name.'`'."\n\n"
             .($option->getDescription() ? preg_replace('/\s*[\r\n]\s*/', "\n", $option->getDescription())."\n\n" : '')
             .'* Accept value: '.($option->acceptValue() ? 'yes' : 'no')."\n"
-            .'* Is value required: '.($option->isValueRequired() ? 'yes' : 'no')."\n"
+            .'* Is value required: '.(InputOption::VALUE_REQUIRED === (InputOption::VALUE_REQUIRED & $option->valueMode()) ? 'yes' : 'no')."\n"
             .'* Is multiple: '.($option->isArray() ? 'yes' : 'no')."\n"
             .'* Is negatable: '.($option->isNegatable() ? 'yes' : 'no')."\n"
             .'* Is deprecated: '.($option->isDeprecated() ? 'yes' : 'no')."\n"

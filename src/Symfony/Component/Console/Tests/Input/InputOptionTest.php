@@ -78,6 +78,7 @@ class InputOptionTest extends TestCase
         $this->assertSame('0|z', $option->getShortcut(), '-0 is an acceptable shortcut value when embedded in a string-list');
     }
 
+    #[IgnoreDeprecations]
     public function testModes()
     {
         $option = new InputOption('foo', 'f');
@@ -334,5 +335,42 @@ class InputOptionTest extends TestCase
         $this->expectExceptionMessage('Closure for option "foo" must return an array. Got "string".');
 
         $option->complete(new CompletionInput(), new CompletionSuggestions());
+    }
+
+    #[Group('legacy')]
+    #[IgnoreDeprecations]
+    public function testIsValueRequiredIsDeprecated()
+    {
+        $option = new InputOption('foo', null, InputOption::VALUE_REQUIRED);
+
+        $this->expectUserDeprecationMessage('Since symfony/console 8.2: The "Symfony\Component\Console\Input\InputOption::isValueRequired()" method is deprecated, use "Symfony\Component\Console\Input\InputOption::valueMode()" instead.');
+
+        $option->isValueRequired();
+    }
+
+    #[IgnoreDeprecations]
+    public function testValueModeMatchesLegacyAccessor()
+    {
+        foreach ([
+            null,
+            InputOption::VALUE_NONE,
+            InputOption::VALUE_REQUIRED,
+            InputOption::VALUE_OPTIONAL,
+            InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
+            InputOption::DEPRECATED,
+            InputOption::HIDDEN,
+        ] as $mode) {
+            $option = new InputOption('foo', null, $mode);
+
+            $this->assertSame($option->isValueRequired(), InputOption::VALUE_REQUIRED === (InputOption::VALUE_REQUIRED & $option->valueMode()));
+        }
+    }
+
+    public function testValueModeEmitsNoDeprecation()
+    {
+        $option = new InputOption('foo', null, InputOption::VALUE_REQUIRED);
+        $option->valueMode();
+
+        $this->addToAssertionCount(1);
     }
 }
