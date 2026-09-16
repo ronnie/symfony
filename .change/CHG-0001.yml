@@ -1,0 +1,45 @@
+# Change record. Written by /plan-change, read by the checker, the CI gate and
+# three audiences who never open the diff.
+#
+# Product reads acceptance statements and the release note.
+# QA reads the named tests.
+# DevOps reads the branch, the paths and the dependency delta.
+
+id: CHG-0001
+change_type: deprecation          # bug_fix | feature | deprecation
+
+target:
+  component: Console
+  branch: "8.2"
+  paths:
+    - "src/Symfony/Component/Console/**"
+    # The pull request template requires an upgrade entry for a deprecation, so
+    # a deprecation's scope is the component plus the upgrade file for the
+    # target branch. C2 demands this file and C4 forbids anything undeclared,
+    # so the record has to name it or the two checks contradict each other.
+    - "UPGRADE-8.2.md"
+
+owner: "@chalasr"                 # resolved from .github/CODEOWNERS, not typed
+
+deprecates:
+  symbol: 'Symfony\Component\Console\Input\InputOption::isValueRequired()'
+  replacement: 'Symfony\Component\Console\Input\InputOption::valueMode()'
+  since: "8.2"
+
+release_note: >
+  Callers who need to know how a Console option takes its value currently
+  have to pick among five yes/no methods, two of which answer halves of the
+  same question. 8.1 already started tightening option-mode semantics. This
+  change adds one method that returns the mode, and warns on the old
+  required-value check so existing callers keep working.
+
+acceptance:
+  - id: AC1
+    statement: Calling isValueRequired() emits a deprecation naming valueMode()
+    test: 'Symfony\Component\Console\Tests\Input\InputOptionTest::testIsValueRequiredIsDeprecated'
+  - id: AC2
+    statement: valueMode() returns the same answer isValueRequired() did
+    test: 'Symfony\Component\Console\Tests\Input\InputOptionTest::testValueModeMatchesLegacyAccessor'
+  - id: AC3
+    statement: valueMode() executes without emitting a deprecation
+    test: 'Symfony\Component\Console\Tests\Input\InputOptionTest::testValueModeEmitsNoDeprecation'
