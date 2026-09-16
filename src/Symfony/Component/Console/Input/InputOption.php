@@ -156,17 +156,31 @@ class InputOption
      */
     public function acceptValue(): bool
     {
-        return $this->isValueRequired() || $this->isValueOptional();
+        return self::VALUE_NONE !== $this->valueMode();
     }
 
     /**
      * Returns true if the option requires a value.
      *
      * @return bool true if value mode is self::VALUE_REQUIRED, false otherwise
+     *
+     * @deprecated since Symfony 8.2, use {@see valueMode()} instead
      */
     public function isValueRequired(): bool
     {
-        return self::VALUE_REQUIRED === (self::VALUE_REQUIRED & $this->mode);
+        trigger_deprecation('symfony/console', '8.2', 'Method "%s::isValueRequired()" is deprecated, use "valueMode()" instead.', __CLASS__);
+
+        return self::VALUE_REQUIRED === $this->valueMode();
+    }
+
+    /**
+     * Returns the option's value mode.
+     *
+     * @return int-mask-of<self::VALUE_NONE|self::VALUE_REQUIRED|self::VALUE_OPTIONAL>
+     */
+    public function valueMode(): int
+    {
+        return $this->mode & (self::VALUE_NONE | self::VALUE_REQUIRED | self::VALUE_OPTIONAL);
     }
 
     /**
@@ -293,8 +307,7 @@ class InputOption
             && $option->getDefault() === $this->getDefault()
             && $option->isNegatable() === $this->isNegatable()
             && $option->isArray() === $this->isArray()
-            && $option->isValueRequired() === $this->isValueRequired()
-            && $option->isValueOptional() === $this->isValueOptional()
+            && $option->valueMode() === $this->valueMode()
         ;
     }
 }

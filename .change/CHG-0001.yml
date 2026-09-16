@@ -1,0 +1,32 @@
+id: CHG-0001
+change_type: deprecation
+owner: '@chalasr'
+release_note: >
+  Command options currently expose five separate yes-or-no methods for a
+  single mode value, so a caller has to know which of the five answers the
+  question, and two of them ask halves of the same one. Symfony 8.1 already
+  deprecates ambiguous mode combinations. valueMode() returns the mode
+  instead, and isValueRequired() is deprecated in favour of it.
+
+target:
+  component: Console
+  branch: '8.2'
+  paths:
+    - src/Symfony/Component/Console/**
+    - UPGRADE-8.2.md
+
+deprecates:
+  symbol: 'Symfony\Component\Console\Input\InputOption::isValueRequired()'
+  replacement: 'Symfony\Component\Console\Input\InputOption::valueMode()'
+  since: '8.2'
+
+acceptance:
+  - id: A1
+    statement: Calling isValueRequired() emits a deprecation naming valueMode()
+    test: Symfony\Component\Console\Tests\Input\InputOptionTest::testIsValueRequiredIsDeprecated
+  - id: A2
+    statement: valueMode() returns the same answer isValueRequired() did
+    test: Symfony\Component\Console\Tests\Input\InputOptionTest::testValueModeMatchesIsValueRequired
+  - id: A3
+    statement: valueMode() executes without emitting a deprecation
+    test: Symfony\Component\Console\Tests\Input\InputOptionTest::testValueModeDoesNotTriggerDeprecation

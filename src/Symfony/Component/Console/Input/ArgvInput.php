@@ -263,7 +263,7 @@ class ArgvInput extends Input
         }
 
         if (null === $value) {
-            if ($option->isValueRequired()) {
+            if (InputOption::VALUE_REQUIRED === $option->valueMode()) {
                 throw new RuntimeException(\sprintf('The "--%s" option requires a value.', $name));
             }
 

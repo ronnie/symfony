@@ -13,6 +13,7 @@ namespace Symfony\Component\Console\Tests\Command;
 
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\ArgumentResolver\ArgumentResolver;
@@ -123,6 +124,7 @@ class InvokableCommandTest extends TestCase
         self::assertSame('define', $command->getDefinition()->getOption('summary')->getDescription());
     }
 
+    #[IgnoreDeprecations]
     public function testCommandInputOptionDefinition()
     {
         $command = new Command('foo');
@@ -238,6 +240,7 @@ class InvokableCommandTest extends TestCase
         $command->run(new ArrayInput(['enum' => 'incorrect']), new NullOutput());
     }
 
+    #[IgnoreDeprecations]
     public function testEnumOption()
     {
         $command = new Command('foo');

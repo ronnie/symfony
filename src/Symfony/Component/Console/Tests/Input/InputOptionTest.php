@@ -78,6 +78,7 @@ class InputOptionTest extends TestCase
         $this->assertSame('0|z', $option->getShortcut(), '-0 is an acceptable shortcut value when embedded in a string-list');
     }
 
+    #[IgnoreDeprecations]
     public function testModes()
     {
         $option = new InputOption('foo', 'f');
@@ -153,6 +154,44 @@ class InputOptionTest extends TestCase
         $this->expectUserDeprecationMessage('Since symfony/console 8.1: Option "foo" mode should be either none, required or optional.');
 
         new InputOption('foo', 'f', $mode);
+    }
+
+    #[Group('legacy')]
+    #[IgnoreDeprecations]
+    public function testIsValueRequiredIsDeprecated()
+    {
+        $this->expectUserDeprecationMessage('Since symfony/console 8.2: Method "Symfony\Component\Console\Input\InputOption::isValueRequired()" is deprecated, use "valueMode()" instead.');
+
+        $option = new InputOption('foo', 'f', InputOption::VALUE_REQUIRED);
+        $option->isValueRequired();
+    }
+
+    #[IgnoreDeprecations]
+    public function testValueModeMatchesIsValueRequired()
+    {
+        $cases = [
+            InputOption::VALUE_NONE => false,
+            InputOption::VALUE_REQUIRED => true,
+            InputOption::VALUE_OPTIONAL => false,
+            InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY => true,
+            InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY => false,
+            InputOption::VALUE_NEGATABLE => false,
+            InputOption::DEPRECATED => false,
+            InputOption::HIDDEN => false,
+        ];
+
+        foreach ($cases as $mode => $required) {
+            $option = new InputOption('foo', 'f', $mode);
+            $this->assertSame($required, $option->isValueRequired());
+            $this->assertSame($required, InputOption::VALUE_REQUIRED === $option->valueMode());
+        }
+    }
+
+    public function testValueModeDoesNotTriggerDeprecation()
+    {
+        $option = new InputOption('foo', 'f', InputOption::VALUE_REQUIRED);
+        $option->valueMode();
+        $this->addToAssertionCount(1);
     }
 
     public static function provideCombiningInvalidModes(): iterable

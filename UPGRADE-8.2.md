@@ -26,6 +26,7 @@ Console
    the listing is still written on the error output and the exit code is still `1`
  * The application listing collapses the commands below a registered command to that command's own line;
    `list <namespace>`, the `--raw` option and the `json` and `md` formats keep listing every command
+ * Deprecate `InputOption::isValueRequired()`, use `InputOption::valueMode()` instead
 
 Crowdin Translation Provider
 ----------------------------
