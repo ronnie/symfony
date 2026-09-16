@@ -78,6 +78,7 @@ class InputOptionTest extends TestCase
         $this->assertSame('0|z', $option->getShortcut(), '-0 is an acceptable shortcut value when embedded in a string-list');
     }
 
+    #[IgnoreDeprecations]
     public function testModes()
     {
         $option = new InputOption('foo', 'f');
@@ -334,5 +335,45 @@ class InputOptionTest extends TestCase
         $this->expectExceptionMessage('Closure for option "foo" must return an array. Got "string".');
 
         $option->complete(new CompletionInput(), new CompletionSuggestions());
+    }
+
+    #[Group('legacy')]
+    #[IgnoreDeprecations]
+    public function testIsValueRequiredEmitsDeprecationNamingValueMode()
+    {
+        $this->expectUserDeprecationMessage('Since symfony/console 8.2: Method "Symfony\Component\Console\Input\InputOption::isValueRequired()" is deprecated, use "Symfony\Component\Console\Input\InputOption::valueMode()" instead.');
+
+        (new InputOption('foo', null, InputOption::VALUE_REQUIRED))->isValueRequired();
+    }
+
+    #[DataProvider('provideValueModeCases')]
+    #[Group('legacy')]
+    #[IgnoreDeprecations]
+    public function testValueModeMatchesIsValueRequired(int $mode, int $expected)
+    {
+        $option = new InputOption('foo', 'f', $mode);
+
+        $this->assertSame($expected, $option->valueMode());
+        $this->assertSame(InputOption::VALUE_REQUIRED === $expected, $option->isValueRequired());
+    }
+
+    public static function provideValueModeCases(): iterable
+    {
+        yield 'none' => [InputOption::VALUE_NONE, InputOption::VALUE_NONE];
+        yield 'required' => [InputOption::VALUE_REQUIRED, InputOption::VALUE_REQUIRED];
+        yield 'optional' => [InputOption::VALUE_OPTIONAL, InputOption::VALUE_OPTIONAL];
+        yield 'required array' => [InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, InputOption::VALUE_REQUIRED];
+        yield 'optional array' => [InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, InputOption::VALUE_OPTIONAL];
+        yield 'deprecated' => [InputOption::DEPRECATED, InputOption::VALUE_NONE];
+        yield 'hidden' => [InputOption::HIDDEN, InputOption::VALUE_NONE];
+        yield 'negatable' => [InputOption::VALUE_NEGATABLE, InputOption::VALUE_NONE];
+    }
+
+    public function testValueModeDoesNotEmitDeprecation()
+    {
+        $option = new InputOption('foo', null, InputOption::VALUE_REQUIRED);
+        $option->valueMode();
+
+        $this->addToAssertionCount(1);
     }
 }

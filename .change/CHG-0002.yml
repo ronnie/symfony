@@ -1,0 +1,33 @@
+id: CHG-0002
+change_type: deprecation
+owner: '@chalasr'
+license: MIT
+
+release_note: >
+  Finding out how a console option takes its value means knowing which of five
+  yes-or-no questions to ask, and two of those questions are halves of the same
+  thing. Callers get one method that returns the mode, and a warning if they
+  still ask the old required-value question.
+
+target:
+  component: Console
+  branch: '8.2'
+  paths:
+    - src/Symfony/Component/Console/**
+    - UPGRADE-8.2.md
+
+deprecates:
+  symbol: Symfony\Component\Console\Input\InputOption::isValueRequired()
+  replacement: Symfony\Component\Console\Input\InputOption::valueMode()
+  since: '8.2'
+
+acceptance:
+  - id: A1
+    statement: Calling isValueRequired() emits a deprecation naming valueMode()
+    test: Symfony\Component\Console\Tests\Input\InputOptionTest::testIsValueRequiredEmitsDeprecationNamingValueMode
+  - id: A2
+    statement: valueMode() returns the same answer isValueRequired() did
+    test: Symfony\Component\Console\Tests\Input\InputOptionTest::testValueModeMatchesIsValueRequired
+  - id: A3
+    statement: valueMode() executes without emitting a deprecation
+    test: Symfony\Component\Console\Tests\Input\InputOptionTest::testValueModeDoesNotEmitDeprecation
