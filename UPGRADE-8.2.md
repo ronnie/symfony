@@ -42,6 +42,11 @@ DependencyInjection
  * Bundles that declare no constructor and inherit `boot()`, `shutdown()` and `setContainer()` from
    `AbstractBundle` are now instantiated on demand instead of on every boot. The `$bundles` property of
    the kernel holds only the bundles that have been instantiated, call `getBundles()` to get them all
+ * Deprecate the `Symfony\Component\EventDispatcher\EventDispatcherInterface` autowiring alias, type
+   `Symfony\Contracts\EventDispatcher\EventDispatcherInterface` instead. Autowiring hands out the event
+   dispatcher of the application, which must not be mutated at runtime, so the type to ask for is the one
+   that only dispatches. A service that needs to read the listeners of the dispatcher, a debug tool for
+   instance, can still be given the `event_dispatcher` service explicitly
 
 DoctrineBridge
 --------------
@@ -61,6 +66,37 @@ DoctrineBridge
    `DoctrineOpenTransactionLoggerMiddleware` took the entity manager name as second argument and its logger as third.
    Also note that `DoctrineDbalPingConnectionMiddleware` does not reset closed entity managers as its deprecated
    counterpart did: workers already reset them between messages
+
+EventDispatcher
+---------------
+
+ * The `event_dispatcher` service is a `CompiledEventDispatcher`, where it used to be an `EventDispatcher`
+   (in debug, it is the one the `TraceableEventDispatcher` decorates) Both implement `EventDispatcherInterface`,
+   which is what to type against; the compiled one holds the identifier and the method of each listener instead
+   of a closure per listener, and fetches a listener from a service locator when it is about to run
+ * `CompileListenersPass` moves the `addListener()` calls of a dispatcher definition into that map. It is
+   registered at `PassConfig::TYPE_AFTER_REMOVING`, so a compiler pass reading those calls still finds them
+   as long as it runs before that. When the definition is a decorator, the calls are compiled into the
+   dispatcher it decorates, so a decorator no longer receives them at runtime
+ * Deprecate calling `addListener()`, `addSubscriber()`, `removeListener()` and `removeSubscriber()` on a
+   `CompiledEventDispatcher`, which is what the `event_dispatcher` service is. Declare the listener in the
+   container, or add it to a `ScopedEventDispatcher` wrapping the shared one and dispatch through that:
+
+   ```php
+   $dispatcher = new ScopedEventDispatcher($container->get('event_dispatcher'));
+   $dispatcher->addSubscriber(new StopWorkerOnMessageLimitListener(10));
+
+   (new Worker($receivers, $bus, $dispatcher))->run();
+   ```
+
+   The listeners of the wrapped dispatcher run as they would have, so only the code that dispatches through the
+   scoped one sees the added ones. A test that adds a listener to the `event_dispatcher` service to watch an
+   event is the most likely place to meet this deprecation; register a listener service in the test container
+   instead, and give it what the test needs to observe
+ * `TraceableEventDispatcher` calls the listeners of an event itself, wrapping them as it goes, where it used
+   to swap each one for a wrapper on the dispatcher it decorates and swap it back afterwards. It therefore no
+   longer calls `dispatch()` on that dispatcher, so a custom implementation's own dispatching is bypassed
+   while the profiler is watching
 
 Filesystem
 ----------
@@ -171,6 +207,7 @@ FrameworkBundle
  * Deprecate `CacheWarmer\RouterCacheWarmer`, `Controller\RedirectController`,
    `Routing\AttributeRouteControllerLoader`, `Routing\DelegatingLoader` and
    `Routing\RedirectableCompiledUrlMatcher`, use their counterparts from the Routing component instead
+ * Deprecate not setting the `framework.scheduler.use_messenger_routing` config option; it will default to `true` in 9.0
 
 HttpClient
 ----------
@@ -276,11 +313,11 @@ RateLimiter
 Scheduler
 ---------
 
- * Deprecate `Schedule::with()`. It returns a schedule that keeps only the event dispatcher, so a lock or a
-   state set on the original schedule is silently dropped, and the resulting schedule then runs unlocked.
+ * Deprecate `Schedule::with()`. It returns an empty schedule, so a lock or a state set on the original
+   schedule is silently dropped, and the resulting schedule then runs unlocked.
 
-   To derive a schedule from another one, clone it. The clone shares the dispatcher, the lock and the state,
-   and its list of messages is independent, so adding to one does not affect the other:
+   To derive a schedule from another one, clone it. The clone keeps the lock and the state, and its list of
+   messages and its listeners are independent, so adding to one does not affect the other:
 
    ```php
    $new = clone $schedule;
@@ -294,8 +331,24 @@ Scheduler
    $new = $schedule->with($message);
 
    // after
-   $new = (new Schedule($dispatcher))->add($message);
+   $new = (new Schedule())->add($message);
    ```
+ * Deprecate passing an event dispatcher to `Schedule::__construct()`. `before()`, `after()` and `onFailure()`
+   register their listeners on the schedule itself, so a listener now runs for the messages of its own schedule
+   only, where it used to run for the messages of every schedule sharing that dispatcher:
+
+   ```php
+   // before
+   $schedule = (new Schedule($this->dispatcher))->before($listener);
+
+   // after
+   $schedule = (new Schedule())->before($listener);
+   ```
+ * `PreRunEvent`, `PostRunEvent` and `FailureEvent` now carry the scheduled message itself when that message is
+   redispatched, instead of the `RedispatchMessage` wrapping it
+ * `MessageContext::$trigger` is a `SerializedTrigger` once its message has crossed a transport. Triggers can hold
+   closures or any other non-serializable state, so only their description travels, and `getNextRunDate()` throws
+   on the receiving side
 
 Security
 --------
@@ -308,6 +361,12 @@ Security
  * Add argument `$targetUri` to `ImpersonateUrlGenerator::generateImpersonationPath()` and `ImpersonateUrlGenerator::generateImpersonationUrl()`
  * Deprecate passing more than one Security attribute to `AccessDecisionManager::decide()`, pass a single attribute instead.
    The `$allowMultipleAttributes` argument will be removed in 9.0
+ * Deprecate not implementing `getAuthenticationProofs()` and `setAuthenticationProofs()` in classes implementing
+   `TokenInterface`; both methods will be added to the interface in 9.0, and until they are implemented no
+   authentication proof is recorded on such a token, so it never satisfies `IS_AUTHENTICATED_RECENTLY`
+ * Deprecate not implementing `isAuthenticatedRecently()` and `isAuthenticatedVeryRecently()` in classes implementing
+   `AuthenticationTrustResolverInterface`; both methods will be added to the interface in 9.0, and `IS_AUTHENTICATED_RECENTLY`
+   and `IS_AUTHENTICATED_VERY_RECENTLY` are denied by `AuthenticatedVoter` until they are implemented
  * Add argument `$parameters` to `LoginLinkHandlerInterface::createLoginLink()`
  * Add argument `$parameters` to `SignatureHasher::computeSignatureHash()`, `SignatureHasher::acceptSignatureHash()` and `SignatureHasher::verifySignatureHash()`
  * Deprecate not passing the `$enforceAtJwtType` argument to `OidcTokenHandler`; pass `true` to reject
@@ -320,6 +379,13 @@ Security
  * [BC BREAK] The `oauth2` access token handler now refuses an introspection response reporting an `exp` in the
    past, or an `nbf` or an `iat` in the future, and one whose `exp`, `nbf` or `iat` is not a number it can read as
    a timestamp
+ * Deprecate `ExceptionListener::register()`, `ExceptionListener::unregister()` and the `$dispatcher` argument
+   of `Firewall::__construct()`. The firewall listens to `kernel.exception` itself and calls the exception
+   listener of the firewall that matched the request, instead of adding that listener to the dispatcher on
+   every request and removing it again
+ * [BC BREAK] `ContextListener` does not register its `onKernelResponse()` method on the event dispatcher
+   anymore. An application built on the Security component alone must register it on the `kernel.response`
+   event; SecurityBundle already registers it and is not affected
 
 SecurityBundle
 --------------
@@ -336,6 +402,17 @@ SecurityBundle
    `setFirewallName()` for success handlers, to the service it decorates whenever that service relies on them,
    as `DefaultAuthenticationSuccessHandler` and `DefaultAuthenticationFailureHandler` do. Without forwarding,
    the authenticator options and the session target path are lost, and a successful login redirects to `/`
+ * Deprecate passing an event dispatcher as the 2nd argument of `FirewallListener::__construct()`, which
+   `TraceableFirewallListener` inherits: the firewall does not register listeners on the dispatcher anymore,
+   so the logout URL generator moves to that position
+
+   ```php
+   // before
+   new FirewallListener($map, $dispatcher, $logoutUrlGenerator);
+
+   // after
+   new FirewallListener($map, $logoutUrlGenerator);
+   ```
 
 Serializer
 ----------

@@ -4,10 +4,17 @@ CHANGELOG
 8.2
 ---
 
+ * Add `RefreshedUserCheckerListener`, running a user checker on `CheckRefreshedUserEvent` so an account disabled during a session is rejected on the next request
+ * Add `CheckRefreshedUserEvent`, dispatched when a user restored from the session has been reloaded from its user provider, to add application-specific reasons to deauthenticate the token
+ * Add argument `$exception` to `TokenDeauthenticatedEvent::__construct()` and `TokenDeauthenticatedEvent::getException()`
+ * Handle security exceptions from a `kernel.exception` listener of the firewall, and deprecate `ExceptionListener::register()`, `ExceptionListener::unregister()` and the `$dispatcher` argument of `Firewall::__construct()`
+ * Stop registering `ContextListener::onKernelResponse()` on the event dispatcher at runtime, register it on the `kernel.response` event instead
  * Make `OidcLoginAuthenticator` a `ReAuthenticationEntryPointInterface`, starting an authorization request with `prompt=login` and the previous ID token as `id_token_hint`
- * Add `ReAuthenticationEntryPointInterface`, started by `ExceptionListener` when `IS_AUTHENTICATED_RECENTLY` is denied
- * Stamp the `auth_time` token attribute from the OIDC ID token claim of the same name, so `max_age` and `IS_AUTHENTICATED_RECENTLY` agree
- * Add `AuthenticationTimeListener`, which records the time of the last interactive authentication as the `auth_time` token attribute
+ * Add `ReAuthenticationEntryPointInterface`, started by `ExceptionListener` when `IS_AUTHENTICATED_RECENTLY` or `IS_AUTHENTICATED_VERY_RECENTLY` is denied
+ * Add `IsGrantedContext::isAuthenticatedVeryRecently()`
+ * Record the OIDC `amr` and `auth_time` claims as the authentication proofs of the token, so `max_age` and `IS_AUTHENTICATED_RECENTLY` agree
+ * Add `AuthenticationProofsListener`, which records an interactive authentication as an authentication proof of the token, under the methods its `AuthenticationMethodBadge` states, and carries the proofs over when a re-authentication of the same user replaces the token
+ * Add `AuthenticationMethodBadge`, for an authenticator to state which authentication methods it verified; `form_login`, `json_login` and `http_basic` state `AuthenticationMethod::PASSWORD`
  * Add `allowed_time_drift` option to `OidcTokenHandler` to configure time tolerance for token validation (`iat`, `nbf`, `exp` claims)
  * Expose the OAuth2 scopes an access token was granted as the `oauth2_scope` token attribute, read from the `scope` or `scp` claim
  * Add `OAuth2ScopeVoter` to require scopes of the access token, all the ones an `OAUTH2_SCOPE(...)` attribute lists

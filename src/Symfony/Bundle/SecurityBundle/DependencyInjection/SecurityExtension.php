@@ -63,6 +63,7 @@ use Symfony\Component\Security\Core\User\UserProviderInterface;
 use Symfony\Component\Security\Http\Authenticator\Debug\TraceableAuthenticator;
 use Symfony\Component\Security\Http\Authenticator\Debug\TraceableAuthenticatorManagerListener;
 use Symfony\Component\Security\Http\Event\CheckPassportEvent;
+use Symfony\Component\Security\Http\Event\CheckRefreshedUserEvent;
 
 /**
  * SecurityExtension.
@@ -136,6 +137,7 @@ class SecurityExtension extends Extension implements PrependExtensionInterface
         // set some global scalars
         $container->setParameter('security.access.denied_url', $config['access_denied_url']);
         $container->setParameter('security.recent_authentication_lifetime', $config['recent_authentication_lifetime']);
+        $container->setParameter('security.very_recent_authentication_lifetime', $config['very_recent_authentication_lifetime']);
         $container->setParameter('security.authentication.manager.erase_credentials', $config['erase_credentials']);
         $container->deprecateParameter('security.authentication.manager.erase_credentials', 'symfony/security-bundle', '8.1', 'The "%s" parameter is deprecated since Symfony 8.1. It will be removed in Symfony 9.0, as the "eraseCredentials()" method was removed in Symfony 8.0.');
         $container->setParameter('security.authentication.session_strategy.strategy', $config['session_fixation_strategy']);
@@ -391,7 +393,7 @@ class SecurityExtension extends Extension implements PrependExtensionInterface
         $firewallEventDispatcherId = 'security.event_dispatcher.'.$id;
 
         $container
-            ->setDefinition('security.listener.authentication_time.'.$id, new ChildDefinition('security.listener.authentication_time'))
+            ->setDefinition('security.listener.authentication_proofs.'.$id, new ChildDefinition('security.listener.authentication_proofs'))
             ->addTag('kernel.event_subscriber', ['dispatcher' => $firewallEventDispatcherId]);
 
         // Provider id (must be configured explicitly per firewall/authenticator if more than one provider is set)
@@ -558,6 +560,17 @@ class SecurityExtension extends Extension implements PrependExtensionInterface
             ->replaceArgument(0, new Reference('security.user_checker.'.$id))
             ->addTag('kernel.event_subscriber', ['dispatcher' => $firewallEventDispatcherId]);
 
+        if ($firewall['user_checker_on_refresh']) {
+            if ($firewall['stateless']) {
+                throw new InvalidConfigurationException(\sprintf('The "user_checker_on_refresh" option of the "%s" firewall requires a stateful firewall, as a stateless one never refreshes the user from a session.', $id));
+            }
+
+            $container
+                ->setDefinition('security.listener.user_checker_on_refresh.'.$id, new ChildDefinition('security.listener.user_checker_on_refresh'))
+                ->replaceArgument(0, new Reference('security.user_checker.'.$id))
+                ->addTag('kernel.event_listener', ['dispatcher' => $firewallEventDispatcherId, 'event' => CheckRefreshedUserEvent::class]);
+        }
+
         $listeners[] = new Reference('security.firewall.authenticator.'.$id);
 
         // Add authenticators to the debug:firewall command
@@ -618,9 +631,9 @@ class SecurityExtension extends Extension implements PrependExtensionInterface
         $listenerId = 'security.context_listener.'.\count($this->contextListeners);
         $listener = $container->setDefinition($listenerId, new ChildDefinition('security.context_listener'));
         $listener->replaceArgument(2, $contextKey);
+        $listener->addTag('kernel.event_listener', ['event' => KernelEvents::RESPONSE, 'method' => 'onKernelResponse']);
         if (null !== $firewallEventDispatcherId) {
             $listener->replaceArgument(4, new Reference($firewallEventDispatcherId));
-            $listener->addTag('kernel.event_listener', ['event' => KernelEvents::RESPONSE, 'method' => 'onKernelResponse']);
         }
 
         return $this->contextListeners[$contextKey] = $listenerId;

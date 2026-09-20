@@ -13,6 +13,7 @@ namespace Symfony\Component\Security\Core\Tests\Authorization;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Security\Core\Authentication\AuthenticationMethod;
 use Symfony\Component\Security\Core\Authentication\AuthenticationTrustResolver;
 use Symfony\Component\Security\Core\Authentication\Token\RememberMeToken;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
@@ -52,15 +53,16 @@ class ExpressionLanguageTest extends TestCase
         $rememberMeToken = new RememberMeToken($user, 'firewall-name');
         $usernamePasswordToken = new UsernamePasswordToken($user, 'firewall-name', $roles);
         $recentlyAuthenticatedToken = new UsernamePasswordToken($user, 'firewall-name', $roles);
-        $recentlyAuthenticatedToken->setAttribute(AuthenticatedVoter::AUTH_TIME_ATTRIBUTE, time());
+        $recentlyAuthenticatedToken->setAuthenticationProofs([AuthenticationMethod::UNSPECIFIED => time()]);
         $staleRememberMeToken = new RememberMeToken($user, 'firewall-name');
-        $staleRememberMeToken->setAttribute(AuthenticatedVoter::AUTH_TIME_ATTRIBUTE, time());
+        $staleRememberMeToken->setAuthenticationProofs([AuthenticationMethod::UNSPECIFIED => time()]);
 
         return [
             [$noToken, 'is_authenticated()', false],
             [$noToken, 'is_fully_authenticated()', false],
             [$noToken, 'is_remember_me()', false],
             [$noToken, 'is_recently_authenticated()', false],
+            [$noToken, 'is_very_recently_authenticated()', false],
 
             [$rememberMeToken, 'is_authenticated()', true],
             [$rememberMeToken, 'is_fully_authenticated()', false],
@@ -69,6 +71,7 @@ class ExpressionLanguageTest extends TestCase
             [$rememberMeToken, "is_granted('ROLE_USER')", true],
             [$rememberMeToken, 'is_recently_authenticated()', false],
             [$staleRememberMeToken, 'is_recently_authenticated()', false],
+            [$staleRememberMeToken, 'is_very_recently_authenticated()', false],
 
             [$usernamePasswordToken, 'is_authenticated()', true],
             [$usernamePasswordToken, 'is_fully_authenticated()', true],
@@ -76,9 +79,11 @@ class ExpressionLanguageTest extends TestCase
             [$usernamePasswordToken, "is_granted('ROLE_FOO')", false],
             [$usernamePasswordToken, "is_granted('ROLE_USER')", true],
             [$usernamePasswordToken, 'is_recently_authenticated()', false],
+            [$usernamePasswordToken, 'is_very_recently_authenticated()', false],
 
             [$recentlyAuthenticatedToken, 'is_recently_authenticated()', true],
             [$recentlyAuthenticatedToken, 'is_fully_authenticated()', true],
+            [$recentlyAuthenticatedToken, 'is_very_recently_authenticated()', true],
         ];
     }
 }

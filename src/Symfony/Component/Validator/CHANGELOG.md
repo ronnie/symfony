@@ -4,6 +4,7 @@ CHANGELOG
 8.2
 ---
 
+ * Add the `Audio` constraint for validating audio files
  * Add `#[WithHttpStatus(422)]` to `ValidationFailedException`, so that an uncaught one renders as an "Unprocessable Content" response instead of a 500 one
  * Add `ValidationBundle`, which provides the `validation` configuration and the services previously provided by `FrameworkBundle` under `framework.validation`
  * Add `CacheWarmer\ValidatorCacheWarmer` and `DependencyInjection\AddValidatorSecurityExpressionLanguageProviderPass`, which `FrameworkBundle` used to provide
@@ -17,6 +18,8 @@ CHANGELOG
  * Allow passing `int`, `float`, `\Stringable` and `\DateTimeInterface` values to `ConstraintViolationBuilderInterface::setParameter()`
  * Stop narrowing the `File` constraint's `mimeTypes` option with mime types auto-derived from the matched extension when `extensions` is configured
  * Add support for reading objects properties with `Unique` constraint `fields` option
+ * Add an optional `$mappedClasses` argument to `Mapping\Loader\LoaderChain::__construct()`, to declare which classes each loader maps
+ * Add `ValidatorBuilder::addMappedClasses()`, to declare which classes each mapping file maps
 
 8.1
 ---

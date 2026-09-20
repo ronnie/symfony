@@ -17,8 +17,8 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Session\SessionInterface;
+use Symfony\Component\Security\Core\Authentication\AuthenticationMethod;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
-use Symfony\Component\Security\Core\Authorization\Voter\AuthenticatedVoter;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\User\UserProviderInterface;
 use Symfony\Component\Security\Http\Authentication\AuthenticationFailureHandlerInterface;
@@ -185,7 +185,10 @@ final class OidcLoginAuthenticator extends AbstractAuthenticator implements Auth
         $redirectUri = $this->httpUtils->generateUri($request, $this->options['check_path']);
 
         $state = bin2hex(random_bytes(32));
-        $nonce = bin2hex(random_bytes(32));
+        // 256 bits of entropy, base64url-encoded to 43 characters instead of the 64 a hex
+        // encoding would take: the nonce travels to the provider and back inside the ID
+        // token, and longer values are known not to be accepted by every provider
+        $nonce = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
 
         $params = [
             'response_type' => 'code',
@@ -351,6 +354,10 @@ final class OidcLoginAuthenticator extends AbstractAuthenticator implements Auth
         // silent SSO login can place well in the past; it is only validated when "max_age"
         // is requested, so anything non-numeric is discarded rather than trusted
         $passport->setAttribute('oidc_auth_time', is_numeric($idTokenClaims['auth_time'] ?? null) ? (int) $idTokenClaims['auth_time'] : null);
+        // "amr" names the methods the provider actually used, from the registry of RFC 8176,
+        // which is what lets a trust resolver require one of them and not just any login
+        $amr = $idTokenClaims['amr'] ?? null;
+        $passport->setAttribute('oidc_amr', \is_array($amr) ? array_values(array_filter($amr, \is_string(...))) : []);
 
         return $passport;
     }
@@ -370,10 +377,18 @@ final class OidcLoginAuthenticator extends AbstractAuthenticator implements Auth
             $token->setAttribute('oidc_access_token_expires_at', is_numeric($tokenData['expires_in'] ?? null) ? $this->clock->now()->getTimestamp() + (int) $tokenData['expires_in'] : null);
         }
 
+        $methods = $passport->getAttribute('oidc_amr');
+        $methods = \is_array($methods) && $methods ? $methods : [AuthenticationMethod::UNSPECIFIED];
+        $now = $this->clock->now()->getTimestamp();
+
         // a provider whose clock runs ahead would otherwise extend the window that
         // IS_AUTHENTICATED_RECENTLY grants, so the claim never dates from the future
         if (null !== $authTime = $passport->getAttribute('oidc_auth_time')) {
-            $token->setAttribute(AuthenticatedVoter::AUTH_TIME_ATTRIBUTE, min($authTime, $this->clock->now()->getTimestamp()));
+            $token->setAuthenticationProofs(array_fill_keys($methods, min($authTime, $now)));
+        } elseif ([AuthenticationMethod::UNSPECIFIED] !== $methods) {
+            // without "auth_time" the login instant is all that is known about when, which is
+            // what AuthenticationProofsListener would record; the methods are still worth keeping
+            $token->setAuthenticationProofs(array_fill_keys($methods, $now));
         }
 
         return $token;
@@ -486,9 +501,8 @@ final class OidcLoginAuthenticator extends AbstractAuthenticator implements Auth
             throw new AuthenticationException(\sprintf('The "%s" claim is missing or invalid in the OIDC response.', $userIdentifierClaim));
         }
 
-        if (!\is_string($idTokenClaims['sub'] ?? null) || '' === $idTokenClaims['sub']) {
-            throw new AuthenticationException('The "sub" claim is missing or invalid in the ID token.');
-        }
+        // the ID token "sub" is validated by OidcIdToken::validateClaims(), before the
+        // UserInfo request this compares its answer to
         if ('userinfo' === $this->options['user_data_source']
             && (!\is_string($claims['sub'] ?? null) || !hash_equals($idTokenClaims['sub'], $claims['sub']))
         ) {

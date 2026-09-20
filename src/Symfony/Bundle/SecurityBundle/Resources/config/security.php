@@ -128,6 +128,7 @@ return static function (ContainerConfigurator $container) {
         ->set('security.authentication.trust_resolver', AuthenticationTrustResolver::class)
             ->args([
                 param('security.recent_authentication_lifetime'),
+                param('security.very_recent_authentication_lifetime'),
                 service('clock')->nullOnInvalid(),
             ])
 
@@ -222,7 +223,6 @@ return static function (ContainerConfigurator $container) {
         ->set('security.firewall', FirewallListener::class)
             ->args([
                 service('security.firewall.map'),
-                service('event_dispatcher'),
                 service('security.logout_url_generator'),
             ])
             ->tag('kernel.event_subscriber')

@@ -18,12 +18,14 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Event\WorkerMessageFailedEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
+use Symfony\Component\Messenger\Message\RedispatchMessage;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Messenger\Stamp\StampInterface;
 use Symfony\Component\Scheduler\Event\FailureEvent;
 use Symfony\Component\Scheduler\Event\PostRunEvent;
 use Symfony\Component\Scheduler\Event\PreRunEvent;
 use Symfony\Component\Scheduler\Messenger\ScheduledStamp;
+use Symfony\Component\Scheduler\ScheduleProviderInterface;
 
 class DispatchSchedulerEventListener implements EventSubscriberInterface
 {
@@ -43,8 +45,9 @@ class DispatchSchedulerEventListener implements EventSubscriberInterface
         }
 
         $result = $envelope->last(HandledStamp::class)?->getResult();
+        $provider = $this->scheduleProviderLocator->get($scheduledStamp->messageContext->name);
 
-        $this->eventDispatcher->dispatch(new PostRunEvent($this->scheduleProviderLocator->get($scheduledStamp->messageContext->name), $scheduledStamp->messageContext, $envelope->getMessage(), $result));
+        $this->dispatch($provider, new PostRunEvent($provider, $scheduledStamp->messageContext, $this->getMessage($envelope), $result));
     }
 
     public function onMessageReceived(WorkerMessageReceivedEvent $event): void
@@ -55,9 +58,10 @@ class DispatchSchedulerEventListener implements EventSubscriberInterface
             return;
         }
 
-        $preRunEvent = new PreRunEvent($this->scheduleProviderLocator->get($scheduledStamp->messageContext->name), $scheduledStamp->messageContext, $envelope->getMessage());
+        $provider = $this->scheduleProviderLocator->get($scheduledStamp->messageContext->name);
+        $preRunEvent = new PreRunEvent($provider, $scheduledStamp->messageContext, $this->getMessage($envelope));
 
-        $this->eventDispatcher->dispatch($preRunEvent);
+        $this->dispatch($provider, $preRunEvent);
 
         if ($preRunEvent->shouldCancel()) {
             $event->shouldHandle(false);
@@ -78,7 +82,32 @@ class DispatchSchedulerEventListener implements EventSubscriberInterface
             return;
         }
 
-        $this->eventDispatcher->dispatch(new FailureEvent($this->scheduleProviderLocator->get($scheduledStamp->messageContext->name), $scheduledStamp->messageContext, $envelope->getMessage(), $event->getThrowable()));
+        $provider = $this->scheduleProviderLocator->get($scheduledStamp->messageContext->name);
+
+        $this->dispatch($provider, new FailureEvent($provider, $scheduledStamp->messageContext, $this->getMessage($envelope), $event->getThrowable()));
+    }
+
+    /**
+     * Notifies the listeners of the application, then the ones registered on the schedule itself.
+     */
+    private function dispatch(ScheduleProviderInterface $provider, object $event): void
+    {
+        $this->eventDispatcher->dispatch($event);
+        $provider->getSchedule()->getEventDispatcher()?->dispatch($event);
+    }
+
+    /**
+     * Unwraps messages that scheduler transports redispatch, so that listeners always get the scheduled message.
+     */
+    private function getMessage(Envelope $envelope): object
+    {
+        $message = $envelope->getMessage();
+
+        if (!$message instanceof RedispatchMessage) {
+            return $message;
+        }
+
+        return $message->envelope instanceof Envelope ? $message->envelope->getMessage() : $message->envelope;
     }
 
     private function getScheduledStamp(Envelope $envelope): ?StampInterface

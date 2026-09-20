@@ -588,11 +588,6 @@ class ParserTest extends TestCase
         $this->assertSame($expected, $this->parser->parse($yaml));
     }
 
-    /**
-     * Regression test for issue #7989.
-     *
-     * @see https://github.com/symfony/symfony/issues/7989
-     */
     public function testBlockLiteralWithLeadingNewlines()
     {
         $yaml = <<<'EOF'
@@ -2004,6 +1999,32 @@ class ParserTest extends TestCase
                 YAML,
             'Mapping values are not allowed in multi-line blocks',
         ];
+
+        yield 'invalid_indentation_in_sequence_nested_under_sequence_item' => [
+            4,
+            <<<YAML
+                - foo:
+                    bar:
+                      - a: 1
+                       - b: 2
+                YAML,
+            'Unable to parse',
+        ];
+
+        yield 'invalid_indentation_in_sequence_nested_under_merge_key' => [
+            8,
+            <<<YAML
+                base:
+                  a: 1
+                foo:
+                  <<:
+                    b: 2
+                    c:
+                      - x: 1
+                       - y: 2
+                YAML,
+            'Unable to parse',
+        ];
     }
 
     #[DataProvider('unquotedStringWithTrailingComment')]
@@ -3131,6 +3152,33 @@ class ParserTest extends TestCase
         ];
 
         $this->assertSame($expected, $this->parser->parse($yaml));
+    }
+
+    public function testBlockScalarKeepsTrailingNewlineWhenNestedInSequenceItem()
+    {
+        $yaml = <<<'YAML'
+            - foo:
+                bar: |
+                  text
+            - second
+            YAML;
+
+        $this->assertSame([['foo' => ['bar' => "text\n"]], 'second'], $this->parser->parse($yaml));
+    }
+
+    public function testBlockScalarKeepsTrailingNewlineWhenNestedInMergeKey()
+    {
+        $yaml = <<<'YAML'
+            base:
+              a: 1
+            foo:
+              <<:
+                bar: |
+                  text
+            z: 2
+            YAML;
+
+        $this->assertSame(['base' => ['a' => 1], 'foo' => ['bar' => "text\n"], 'z' => 2], $this->parser->parse($yaml));
     }
 
     #[DataProvider('indentedMappingData')]

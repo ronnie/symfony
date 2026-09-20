@@ -13,6 +13,7 @@ namespace Symfony\Component\Serializer\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
+use Symfony\Component\Config\Resource\FileResource;
 use Symfony\Component\DependencyInjection\Compiler\MergeExtensionConfigurationPass;
 use Symfony\Component\DependencyInjection\Compiler\RemoveMissingDependenciesPass as ContainerRemoveMissingDependenciesPass;
 use Symfony\Component\DependencyInjection\Compiler\ResolveBindingsPass;
@@ -23,6 +24,7 @@ use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\Serializer\DependencyInjection\RemoveMissingDependenciesPass;
 use Symfony\Component\Serializer\DependencyInjection\SerializerPass;
 use Symfony\Component\Serializer\Encoder\JsonDecode;
+use Symfony\Component\Serializer\Mapping\Loader\YamlFileLoader;
 use Symfony\Component\Serializer\Normalizer\BackedEnumNormalizer;
 use Symfony\Component\Serializer\Normalizer\ConstraintViolationListNormalizer;
 use Symfony\Component\Serializer\Normalizer\DataUriNormalizer;
@@ -33,6 +35,8 @@ use Symfony\Component\Serializer\Normalizer\JsonSerializableNormalizer;
 use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
 use Symfony\Component\Serializer\Normalizer\TranslatableNormalizer;
 use Symfony\Component\Serializer\SerializerBundle;
+use Symfony\Component\Serializer\Tests\Fixtures\Attributes\ContextDummy;
+use Symfony\Component\Serializer\Tests\Fixtures\Attributes\GroupDummy;
 
 class SerializerBundleTest extends TestCase
 {
@@ -131,6 +135,65 @@ class SerializerBundleTest extends TestCase
     {
         $container = $this->load(['enable_attributes' => true], debug: false);
         $this->assertTrue($container->hasDefinition('serializer.mapping.cache_class_metadata_factory'));
+    }
+
+    public function testSerializerCacheUsedWithMappingFilesOnly()
+    {
+        $container = $this->load(['enable_attributes' => false, 'mapping' => ['paths' => [__DIR__.'/Fixtures/serialization.yml']]], debug: true);
+
+        $this->assertTrue($container->hasDefinition('serializer.mapping.cache_class_metadata_factory'));
+    }
+
+    public function testSerializerCacheUsesTheClearablePoolInDebug()
+    {
+        $container = $this->load(['enable_attributes' => false, 'mapping' => ['paths' => [__DIR__.'/Fixtures/serialization.yml']]], debug: true);
+
+        $cache = $container->getDefinition('serializer.mapping.cache_class_metadata_factory')->getArgument(1);
+        $this->assertEquals(new Reference('cache.serializer'), $cache);
+    }
+
+    public function testSerializerMappingFilesAreTrackedWhenCacheIsUsed()
+    {
+        $container = $this->load(['enable_attributes' => false, 'mapping' => ['paths' => [__DIR__.'/Fixtures/serialization.yml']]], debug: true);
+
+        $this->assertContains(strtr(__DIR__.'/Fixtures/serialization.yml', '\\', '/'), $this->trackedFiles($container));
+    }
+
+    public function testSerializerMappingFilesAreTrackedWhenCacheIsNotUsed()
+    {
+        $container = $this->load(['enable_attributes' => true, 'mapping' => ['paths' => [__DIR__.'/Fixtures/serialization.yml']]], debug: true);
+
+        $this->assertContains(strtr(__DIR__.'/Fixtures/serialization.yml', '\\', '/'), $this->trackedFiles($container));
+    }
+
+    public function testMappingFilesDeclareTheClassesTheyMap()
+    {
+        $container = $this->load(['enable_attributes' => true, 'mapping' => ['paths' => [__DIR__.'/Fixtures/serialization.yml']]]);
+
+        $loaders = $container->getDefinition('serializer.mapping.chain_loader')->getArgument(0);
+        $mappedClasses = $container->getDefinition('serializer.mapping.chain_loader')->getArgument(1);
+
+        $this->assertEquals(new Reference('serializer.mapping.attribute_loader'), $loaders[0]);
+        $this->assertArrayNotHasKey(0, $mappedClasses, 'the attribute loader is used for every class');
+        $this->assertSame(YamlFileLoader::class, $loaders[1]->getClass());
+        $this->assertArrayHasKey(GroupDummy::class, $mappedClasses[1]);
+        $this->assertArrayHasKey(ContextDummy::class, $mappedClasses[1]);
+        $this->assertArrayNotHasKey(\stdClass::class, $mappedClasses[1]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function trackedFiles(ContainerBuilder $container): array
+    {
+        $files = [];
+        foreach ($container->getResources() as $resource) {
+            if ($resource instanceof FileResource) {
+                $files[] = strtr($resource->getResource(), '\\', '/');
+            }
+        }
+
+        return $files;
     }
 
     public function testSerializerCacheNotActivatedWithAttributes()

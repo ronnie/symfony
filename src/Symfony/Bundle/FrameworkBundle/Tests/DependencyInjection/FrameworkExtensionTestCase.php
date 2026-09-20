@@ -941,14 +941,15 @@ abstract class FrameworkExtensionTestCase extends TestCase
 
         $calls = $container->getDefinition('validator.builder')->getMethodCalls();
 
-        $this->assertCount(9, $calls);
+        $this->assertCount(10, $calls);
         $this->assertSame('addXmlMappings', $calls[4][0]);
         $this->assertSame('addYamlMappings', $calls[5][0]);
-        $this->assertSame('enableAttributeMapping', $calls[6][0]);
-        $this->assertSame('addMethodMapping', $calls[7][0]);
-        $this->assertSame(['loadValidatorMetadata'], $calls[7][1]);
-        $this->assertSame('setMappingCache', $calls[8][0]);
-        $this->assertEquals([new Reference('validator.mapping.cache.adapter')], $calls[8][1]);
+        $this->assertSame('addMappedClasses', $calls[6][0]);
+        $this->assertSame('enableAttributeMapping', $calls[7][0]);
+        $this->assertSame('addMethodMapping', $calls[8][0]);
+        $this->assertSame(['loadValidatorMetadata'], $calls[8][1]);
+        $this->assertSame('setMappingCache', $calls[9][0]);
+        $this->assertEquals([new Reference('validator.mapping.cache.adapter')], $calls[9][1]);
 
         $xmlMappings = $calls[4][1][0];
 
@@ -1062,7 +1063,6 @@ abstract class FrameworkExtensionTestCase extends TestCase
     /**
      * @see https://github.com/symfony/symfony/issues/54478
      */
-
     public function testPropertyInfoConfigurationIsForwardedToPropertyInfoBundle()
     {
         $container = $this->createContainerFromFile('legacy_property_info');
@@ -1381,6 +1381,21 @@ abstract class FrameworkExtensionTestCase extends TestCase
         $this->assertTrue($iterator->needsIndexes());
     }
 
+    public function testCachePoolClearerIsRegisteredInDebugWithoutTheProfiler()
+    {
+        $container = $this->createContainerFromFile('default_config', ['kernel.debug' => true, 'kernel.container_class' => __CLASS__]);
+
+        $this->assertFalse($container->hasDefinition('data_collector.cache'));
+        $this->assertTrue($container->hasDefinition('cache_pool_clearer.cache_warmer'));
+    }
+
+    public function testCachePoolClearerIsNotRegisteredWithoutDebug()
+    {
+        $container = $this->createContainerFromFile('default_config', ['kernel.debug' => false, 'kernel.container_class' => __CLASS__]);
+
+        $this->assertFalse($container->hasDefinition('cache_pool_clearer.cache_warmer'));
+    }
+
     public function testSessionCookieSecureAuto()
     {
         $container = $this->createContainerFromFile('session_cookie_secure_auto');
@@ -1594,6 +1609,16 @@ abstract class FrameworkExtensionTestCase extends TestCase
         $definition = $container->getDefinition('rate_limiter.attribute_listener');
         $this->assertSame(RateLimitAttributeListener::class, $definition->getClass());
         $this->assertTrue($definition->hasTag('kernel.event_subscriber'));
+    }
+
+    public function testControllerExpressionLanguageRegistersTheSecurityProvider()
+    {
+        $container = $this->createContainerFromFile('full');
+
+        $this->assertEquals(
+            [['registerProvider', [new Reference('security.expression_language_provider', ContainerInterface::IGNORE_ON_INVALID_REFERENCE)]]],
+            $container->getDefinition('controller.expression_language')->getMethodCalls(),
+        );
     }
 
     /**
@@ -1835,6 +1860,7 @@ abstract class FrameworkExtensionTestCase extends TestCase
                 'asset_mapper' => [
                     'server' => $server,
                     'public_prefix' => '/assets_path/',
+                    'metadata_dir' => '%kernel.share_dir%/assets',
                     'paths' => ['assets/'],
                 ],
             ]);
@@ -1861,6 +1887,7 @@ abstract class FrameworkExtensionTestCase extends TestCase
                 'assets' => null,
                 'asset_mapper' => [
                     'paths' => ['assets/'],
+                    'metadata_dir' => '%kernel.share_dir%/assets',
                     'importmap_entries' => 'reachable',
                     'importmap_polyfill' => 'my-polyfill',
                 ],
@@ -1871,6 +1898,26 @@ abstract class FrameworkExtensionTestCase extends TestCase
         $this->assertSame('reachable', $definition->getArgument(4));
         // the polyfill name is configured on the renderer only, and handed over at render time
         $this->assertSame('my-polyfill', $container->getDefinition('asset_mapper.importmap.renderer')->getArgument(3));
+    }
+
+    public function testAssetMapperMetadataDirIsConfigurable()
+    {
+        $container = $this->createContainerFromFile('asset_mapper_metadata_dir');
+
+        $this->assertSame(
+            $container->getParameter('kernel.project_dir').'/var/assets',
+            $container->getDefinition('asset_mapper.compiled_asset_mapper_config_reader')->getArgument(0),
+        );
+    }
+
+    public function testAssetMapperMetadataDirFallsBackToThePublicAssetsDirectory()
+    {
+        $container = $this->createContainerFromFile('asset_mapper_default_metadata_dir');
+
+        $this->assertStringEndsWith(
+            '/assets',
+            $container->getDefinition('asset_mapper.compiled_asset_mapper_config_reader')->getArgument(0),
+        );
     }
 
     public function testJsonStreamerConfigurationIsForwardedToJsonStreamerBundle()
