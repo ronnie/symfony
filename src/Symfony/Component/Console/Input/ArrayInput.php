@@ -224,7 +224,7 @@ class ArrayInput extends Input
         $option = $this->definition->getOption($name);
 
         if (null === $value) {
-            if ($option->isValueRequired()) {
+            if (InputOption::VALUE_REQUIRED === $option->valueMode()) {
                 throw new InvalidOptionException(\sprintf('The "--%s" option requires a value.', $name));
             }
 

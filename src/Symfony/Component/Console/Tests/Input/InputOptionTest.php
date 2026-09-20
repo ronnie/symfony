@@ -78,6 +78,7 @@ class InputOptionTest extends TestCase
         $this->assertSame('0|z', $option->getShortcut(), '-0 is an acceptable shortcut value when embedded in a string-list');
     }
 
+    #[IgnoreDeprecations]
     public function testModes()
     {
         $option = new InputOption('foo', 'f');
@@ -161,6 +162,44 @@ class InputOptionTest extends TestCase
         yield [InputOption::VALUE_NONE | InputOption::VALUE_OPTIONAL];
         yield [InputOption::VALUE_REQUIRED | InputOption::VALUE_OPTIONAL];
         yield [InputOption::VALUE_NONE | InputOption::VALUE_REQUIRED | InputOption::VALUE_OPTIONAL];
+    }
+
+    #[IgnoreDeprecations]
+    public function testIsValueRequiredIsDeprecated()
+    {
+        $option = new InputOption('foo', 'f', InputOption::VALUE_REQUIRED);
+
+        $this->expectUserDeprecationMessage('Since symfony/console 8.2: Calling "Symfony\Component\Console\Input\InputOption::isValueRequired()" is deprecated, use "Symfony\Component\Console\Input\InputOption::valueMode()" instead.');
+
+        $option->isValueRequired();
+    }
+
+    #[IgnoreDeprecations]
+    public function testValueModeAgreesWithIsValueRequired()
+    {
+        $cases = [
+            [null, false],
+            [InputOption::VALUE_NONE, false],
+            [InputOption::VALUE_REQUIRED, true],
+            [InputOption::VALUE_OPTIONAL, false],
+            [InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, true],
+            [InputOption::DEPRECATED, false],
+            [InputOption::HIDDEN, false],
+        ];
+
+        foreach ($cases as [$mode, $required]) {
+            $option = new InputOption('foo', 'f', $mode);
+            $this->assertSame($required, $option->isValueRequired());
+            $this->assertSame($required, InputOption::VALUE_REQUIRED === $option->valueMode());
+        }
+    }
+
+    public function testValueModeDoesNotEmitDeprecation()
+    {
+        $option = new InputOption('foo', 'f', InputOption::VALUE_REQUIRED);
+        $option->valueMode();
+
+        $this->addToAssertionCount(1);
     }
 
     public function testEmptyNameIsInvalid()

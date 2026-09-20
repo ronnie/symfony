@@ -1,0 +1,35 @@
+id: CHG-0001
+change_type: deprecation
+owner: '@chalasr'
+license: MIT
+
+release_note: >
+  Console option mode is currently five separate yes/no questions, and two
+  of them are halves of the same question. Anyone who wants to know what
+  mode an option is in has to already know which method to call. 8.1 already
+  started tightening mode semantics. This change adds one method that returns
+  the mode, and warns on the old required-value check so existing callers
+  keep working.
+
+target:
+  component: Console
+  branch: '8.2'
+  paths:
+    - src/Symfony/Component/Console/**
+    - UPGRADE-8.2.md
+
+deprecates:
+  symbol: 'Symfony\Component\Console\Input\InputOption::isValueRequired()'
+  replacement: 'Symfony\Component\Console\Input\InputOption::valueMode()'
+  since: '8.2'
+
+acceptance:
+  - id: A1
+    statement: Calling isValueRequired() emits a deprecation naming valueMode()
+    test: Symfony\Component\Console\Tests\Input\InputOptionTest::testIsValueRequiredIsDeprecated
+  - id: A2
+    statement: valueMode() returns the same answer isValueRequired() did
+    test: Symfony\Component\Console\Tests\Input\InputOptionTest::testValueModeAgreesWithIsValueRequired
+  - id: A3
+    statement: valueMode() executes without emitting a deprecation
+    test: Symfony\Component\Console\Tests\Input\InputOptionTest::testValueModeDoesNotEmitDeprecation

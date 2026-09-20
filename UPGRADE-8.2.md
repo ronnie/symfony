@@ -16,6 +16,7 @@ AssetMapper
 Console
 -------
 
+ * Deprecate `InputOption::isValueRequired()`, use `InputOption::valueMode()` instead
  * [BC BREAK] A token that names a registered sub-command runs it instead of binding to an argument of its
    parent: with both `app:import` and `app:import:users` registered, `app:import users` and `app import users`
    now run `app:import:users`, where `users` was bound to the `file` argument of `app:import`. Write
