@@ -25,6 +25,16 @@ owner: "@handle"                     # resolved from .github/CODEOWNERS by
                                       # from memory or carry it over from
                                       # another record.
 
+issues: "Fix #<n>"                   # the reported issue, verbatim into
+                                      # the PR table's Issues row
+                                      # (bin/pr-body.php:61). Quote it: the
+                                      # space before # makes YAML read the
+                                      # rest as a comment, leaving "Fix".
+                                      # Several go in one string,
+                                      # "Fix #1, Fix #2"; a list renders as
+                                      # "Array". Omit if none exists and
+                                      # explain in the release note.
+
 # license: MIT                       # UNCONFIRMED, see header. No check
                                       # (C1-C5) reads this field today. If it
                                       # tracks the license of a dependency
