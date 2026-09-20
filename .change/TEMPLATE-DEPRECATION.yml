@@ -1,0 +1,69 @@
+# Change record template: deprecation.
+#
+# Written by /plan-change, or drafted by the onboarding-starter automation
+# for a human to confirm. Read by bin/check-change.php, the CI gate, and
+# three audiences who never open the diff:
+#   Product reads acceptance statements and the release note.
+#   QA reads the named tests.
+#   DevOps reads the branch, the paths, and the dependency delta.
+#
+# Schema measured against CHG-0001.yml and CHG-0002.yml, both real, gated
+# records. Two fields disagreed between them and are flagged rather than
+# silently resolved:
+#   - license: present in CHG-0002 (license: MIT), absent from CHG-0001.
+#   - acceptance id prefix: "AC1".."AC3" in CHG-0001, "A1".."A3" in CHG-0002.
+# Pick one convention and update this comment once confirmed. A third record
+# should not introduce a third convention.
+
+id: CHG-<n>                          # next unused number, or the GitHub
+                                      # issue number for an automation draft
+
+change_type: deprecation             # bug_fix | feature | deprecation
+
+owner: "@handle"                     # resolved from .github/CODEOWNERS by
+                                      # most specific match. Do not type this
+                                      # from memory or carry it over from
+                                      # another record.
+
+# license: MIT                       # UNCONFIRMED, see header. No check
+                                      # (C1-C5) reads this field today. If it
+                                      # tracks the license of a dependency
+                                      # newly introduced by the change, for
+                                      # cross reference against C4, say so
+                                      # here once decided; otherwise drop
+                                      # this line entirely.
+
+release_note: >
+  What breaks today if nothing changes, in the words the person requesting
+  the change actually used. A product manager reads this; an engineer does
+  not. If drafted by the automation from an issue body, that is a stand-in
+  for asking the user directly (/plan-change step 1), and the draft should
+  say so.
+
+target:
+  component: <Component>
+  branch: "<branch>"                 # Ask. Do not derive: the maintained
+                                      # branch set is not machine derivable
+                                      # (/plan-change step 5, DECISIONS.md).
+                                      # A drafted record must mark this as an
+                                      # assumption pending confirmation, not
+                                      # a decision.
+  paths:
+    - "src/Symfony/Component/<Component>/**"
+    - "UPGRADE-<branch>.md"          # Required alongside the component: C2
+                                      # demands this file and C4 forbids
+                                      # anything undeclared, so both checks
+                                      # fail unless the record names it.
+
+deprecates:
+  symbol: '<Fully\Qualified\Class>::<method>()'
+  replacement: '<Fully\Qualified\Class>::<method>()'
+  since: "<branch>"                  # must match target.branch
+
+acceptance:
+  - id: AC1                          # see prefix note in header
+    statement: <one observable statement>
+    test: '<Fully\Qualified\Namespace>\Tests\<Class>Test::<testMethod>'
+    # Name the test even if it does not exist yet. C5 is expected to fail
+    # until it does. That failure is the point (/plan-change step 7), not a
+    # defect in the record.

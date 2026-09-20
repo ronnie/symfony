@@ -1,0 +1,68 @@
+# Change record template: bug fix.
+#
+# No bug_fix record has been produced or gated. Reading the checker is not
+# the same as running it against a real record, so nothing here is measured
+# the way CHG-0001 and CHG-0002 measured TEMPLATE-DEPRECATION.yml.
+#
+# What reading it settles (bin/check-change.php and bin/lib/ at e617ecc96e7):
+# no check reads a field this template lacks, so no field was added. C1-C5
+# branch on change_type only where a deprecation adds a requirement
+# (check-change.php:255, 299), and record.php:208-214 is the only
+# type-specific schema rule. Nothing treats bug_fix as more than an enum
+# member. Not wired into the onboarding-starter automation, which stops and
+# comments unless the labeled issue is a Console deprecation.
+#
+# The same two open questions from TEMPLATE-DEPRECATION.yml apply here:
+#   - license field: keep, or drop entirely.
+#   - acceptance id prefix: "AC1" style vs "A1" style.
+
+id: CHG-<n>
+
+change_type: bug_fix                 # bug_fix | feature | deprecation
+
+owner: "@handle"                     # resolved from .github/CODEOWNERS by
+                                      # most specific match. Unread by C1-C5
+                                      # but not unused, as are release_note
+                                      # and license: bin/pr-body.php reads
+                                      # all three (lines 62-66, 93). Do not
+                                      # drop them.
+
+# license: MIT                       # UNCONFIRMED, see header
+
+release_note: >
+  What breaks today, in the words the person reporting the bug used.
+
+target:
+  component: <Component>
+  branch: "<branch>"                 # Ask. The oldest maintained branch
+                                      # containing the bug is a judgement
+                                      # call (/plan-change step 5). C3 does
+                                      # not settle it: it only compares this
+                                      # with the pull request's base and
+                                      # encodes no branch policy
+                                      # (check-change.php:371-423).
+  paths:
+    - "src/Symfony/Component/<Component>/**"
+    # C2 demands no changelog and no upgrade entry for an ordinary fix; it
+    # skips unless the record is a deprecation or the diff adds one. But its
+    # gate is `|| $checkable > 0` (check-change.php:299), so a fix that adds
+    # any @deprecated annotation turns C2 on and then demands both files.
+    # Declare UPGRADE-<branch>.md here if that happens: C4 is type-blind and
+    # conventions.yml's artifact_paths does not cover it.
+
+# No deprecates-equivalent block exists yet for this change_type. Leave empty
+# rather than inventing one. Confirmed by reading the checker, not by gating
+# a record: an absent block here is never read, not skipped and not an error.
+#
+# The asymmetry worth knowing: C1's scan is type-blind
+# (check-change.php:164-253). A bug fix that adds an @deprecated annotation
+# without a paired trigger_deprecation call fails C1 like any deprecation.
+
+acceptance:
+  - id: AC1
+    statement: <one observable statement describing the bug fixed>
+    # Unread by C1-C5 but required by the schema (record.php:225): omit it
+    # and the record exits 2 before any check runs.
+    test: '<Fully\Qualified\Namespace>\Tests\<Class>Test::<testMethod>'
+    # Name the test even if it does not exist yet. C5 is type-blind
+    # (check-change.php:512-547) and fails here exactly as it would there.
