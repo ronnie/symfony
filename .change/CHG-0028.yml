@@ -1,0 +1,83 @@
+# Change record template: bug fix.
+#
+# No bug_fix record has been produced or gated. Reading the checker is not
+# the same as running it against a real record, so nothing here is measured
+# the way CHG-0001 and CHG-0002 measured TEMPLATE-DEPRECATION.yml.
+#
+# What reading it settles (bin/check-change.php and bin/lib/ at e617ecc96e7):
+# no check reads a field this template lacks, so no field was added. C1-C5
+# branch on change_type only where a deprecation adds a requirement
+# (check-change.php:255, 299), and record.php:208-214 is the only
+# type-specific schema rule. Nothing treats bug_fix as more than an enum
+# member. Not wired into the onboarding-starter automation, which stops and
+# comments unless the labeled issue is a Console deprecation.
+#
+# The same two open questions from TEMPLATE-DEPRECATION.yml apply here:
+#   - license field: keep, or drop entirely.
+#   - acceptance id prefix: "AC1" style vs "A1" style.
+
+id: CHG-0028
+
+change_type: bug_fix                 # bug_fix | feature | deprecation
+
+owner: "@chalasr"                    # resolved from .github/CODEOWNERS by
+                                      # most specific match. Unread by C1-C5
+                                      # but not unused, as are release_note
+                                      # and license: bin/pr-body.php reads
+                                      # all three (lines 62-66, 93). Do not
+                                      # drop them.
+
+issues: "Fix #28"                    # the reported issue, verbatim into
+                                      # the PR table's Issues row
+                                      # (bin/pr-body.php:61). Quote it: the
+                                      # space before # makes YAML read the
+                                      # rest as a comment, leaving "Fix".
+                                      # Several go in one string,
+                                      # "Fix #1, Fix #2"; a list renders as
+                                      # "Array". Omit if none exists and
+                                      # explain in the release note.
+
+# license: MIT                       # UNCONFIRMED, see header
+
+release_note: >
+  Drafted by automation from issue #28 body as a stand-in for /plan-change step 1:
+  A `Table` cell containing a multi byte UTF-8 character, an accented name or
+  an emoji, throws off the column width calculation and the whole table
+  renders misaligned. Looks like width is being measured in bytes somewhere
+  instead of display width. Reproduces reliably with any cell containing a
+  non ASCII character.
+
+target:
+  component: Console
+  branch: "8.2"                      # Ask. The oldest maintained branch
+                                      # containing the bug is a judgement
+                                      # call (/plan-change step 5). C3 does
+                                      # not settle it: it only compares this
+                                      # with the pull request's base and
+                                      # encodes no branch policy
+                                      # (check-change.php:371-423).
+  paths:
+    - "src/Symfony/Component/Console/**"
+    # C2 demands no changelog and no upgrade entry for an ordinary fix; it
+    # skips unless the record is a deprecation or the diff adds one. But its
+    # gate is `|| $checkable > 0` (check-change.php:299), so a fix that adds
+    # any @deprecated annotation turns C2 on and then demands both files.
+    # Declare UPGRADE-<branch>.md here if that happens: C4 is type-blind and
+    # conventions.yml's artifact_paths does not cover it.
+
+# No deprecates-equivalent block exists yet for this change_type. Leave empty
+# rather than inventing one. Confirmed by reading the checker, not by gating
+# a record: an absent block here is never read, not skipped and not an error.
+#
+# The asymmetry worth knowing: C1's scan is type-blind
+# (check-change.php:164-253). A bug fix that adds an @deprecated annotation
+# without a paired trigger_deprecation call fails C1 like any deprecation.
+
+acceptance:
+  - id: AC1
+    statement: Table column widths calculate correctly when cell content contains multi-byte UTF-8 characters
+    # Unread by C1-C5 but required by the schema (record.php:225): omit it
+    # and the record exits 2 before any check runs.
+    test: 'Symfony\Component\Console\Tests\Helper\TableTest::testMultiByteColumnWidthCalculation'
+    # Name the test even if it does not exist yet. C5 is type-blind
+    # (check-change.php:512-547) and fails here exactly as it would there.
