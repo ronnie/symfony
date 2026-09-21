@@ -79,6 +79,8 @@ boundary:
     # just written, and widened for every branch's file rather than one, since
     # the next deprecation targets whichever branch is current then, not 8.2.
     - UPGRADE-*.md
+    - .github/PULL_REQUEST_TEMPLATE.md
+    - ARTIFACT.md
   read_allow_derived_from: src/Symfony/Component/Console/composer.json#require
   # Writes are limited to the component root and its Tests directory, plus the
   # upgrade files for the same reason they are readable above. Not itself
