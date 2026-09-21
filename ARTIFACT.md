@@ -69,7 +69,8 @@ DECISIONS.md                          evidence, decisions, known limits
 .change/CHG-0001.yml                  change record
 .cursor/hooks.json                    beforeReadFile, beforeShellExecution
 .cursor/rules/boundary-recovery.mdc   behaviour after a denial
-.cursor/commands/                     /plan-change, /deprecate
+.cursor/skills/                       plan-change, deprecate (Agent Skills)
+.cursor/commands/                     /plan-change, /deprecate, each calls its skill
 .cursor/labs/                         observed Cursor behaviour, lab notes
 .github/workflows/convention-gate.yml the CI gate. Not conventions.yml.
 bin/check-change.php                  the gate
