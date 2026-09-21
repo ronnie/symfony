@@ -1,0 +1,53 @@
+# Change record template: deprecation.
+#
+# Written by /plan-change, or drafted by the onboarding-starter automation
+# for a human to confirm. Read by bin/check-change.php, the CI gate, and
+# three audiences who never open the diff:
+#   Product reads acceptance statements and the release note.
+#   QA reads the named tests.
+#   DevOps reads the branch, the paths, and the dependency delta.
+#
+# Schema measured against CHG-0001.yml and CHG-0002.yml, both real, gated
+# records. Two fields disagreed between them and are flagged rather than
+# silently resolved:
+#   - license: present in CHG-0002 (license: MIT), absent from CHG-0001.
+#   - acceptance id prefix: "AC1".."AC3" in CHG-0001, "A1".."A3" in CHG-0002.
+# Pick one convention and update this comment once confirmed. A third record
+# should not introduce a third convention.
+
+id: CHG-0021
+
+change_type: deprecation
+
+owner: "@chalasr"
+
+issues: "Fix #21"
+
+release_note: >
+  Drafted by automation from issue #21 body as a stand-in for /plan-change step 1:
+  Calling QuestionHelper::ask() for a multiline answer means passing a
+  boolean flag buried in the question's constructor rather than something
+  visible at the call site. New team members keep missing it and get single
+  line input silently truncated. A dedicated method or a more visible flag
+  would read better, and the old constructor path could be deprecated once
+  one exists.
+
+target:
+  component: Console
+  branch: "8.2"
+  paths:
+    - "src/Symfony/Component/Console/**"
+    - "UPGRADE-8.2.md"
+
+deprecates:
+  symbol: 'Symfony\Component\Console\Question\Question::setMultiline()'
+  replacement: 'Symfony\Component\Console\Question\MultilineQuestion'
+  since: "8.2"
+
+acceptance:
+  - id: AC1
+    statement: Calling Question::setMultiline() emits a deprecation in favor of MultilineQuestion
+    test: 'Symfony\Component\Console\Tests\Question\QuestionTest::testSetMultilineIsDeprecated'
+  - id: AC2
+    statement: MultilineQuestion handles multiline input in QuestionHelper without emitting a deprecation
+    test: 'Symfony\Component\Console\Tests\Helper\QuestionHelperTest::testAskMultilineQuestion'
