@@ -1,0 +1,62 @@
+# Change record. Drafted by the onboarding-starter automation from
+# issue #19 (Maya Chen), as a stand-in for /plan-change step 1. A human
+# must confirm the assumptions marked below before /deprecate runs.
+#
+# Product reads acceptance statements and the release note.
+# QA reads the named tests.
+# DevOps reads the branch, the paths and the dependency delta.
+#
+# Conventions picked from the two gated records, pending confirmation:
+#   - license omitted, as in CHG-0001 (CHG-0002 set license: MIT)
+#   - acceptance ids AC1..AC3, as in CHG-0001 (CHG-0002 used A1..A3)
+
+id: CHG-0019
+change_type: deprecation
+
+owner: "@chalasr"
+
+issues: "Fix #19"
+
+release_note: >
+  Drafted from issue #19, as a stand-in for asking the requester directly.
+  InputArgument::isRequired() and InputArgument::isArray() make a caller
+  ask two separate yes or no questions about the same underlying thing:
+  how the argument expects its value. Console already collapsed the same
+  shape on InputOption into valueMode(). Callers get one method that
+  returns the mode, and a warning if they still ask the old required
+  question.
+
+target:
+  component: Console
+  # ASSUMPTION, pending confirmation. Deprecations target the development
+  # branch, which is 8.2 today. Not derived from releases.json: that file
+  # exposes three overlapping keys, and C3 only checks that this value
+  # matches the pull request base.
+  branch: "8.2"
+  paths:
+    - "src/Symfony/Component/Console/**"
+    - "UPGRADE-8.2.md"
+
+deprecates:
+  # ASSUMPTION, pending confirmation. InputOption's cleanup deprecated
+  # isValueRequired() in favour of valueMode(), which returns the mutually
+  # exclusive VALUE_NONE|VALUE_REQUIRED|VALUE_OPTIONAL slice and leaves
+  # isArray() alone. The same slice on InputArgument is REQUIRED|OPTIONAL.
+  # isArray() is a combinable bit, like InputOption::isArray(), so it is
+  # not named here even though the issue mentioned it. Confirm whether
+  # the replacement should be mode() or valueMode(), and whether isArray()
+  # belongs in a follow-up.
+  symbol: 'Symfony\Component\Console\Input\InputArgument::isRequired()'
+  replacement: 'Symfony\Component\Console\Input\InputArgument::mode()'
+  since: "8.2"
+
+acceptance:
+  - id: AC1
+    statement: Calling isRequired() emits a deprecation naming mode()
+    test: 'Symfony\Component\Console\Tests\Input\InputArgumentTest::testIsRequiredIsDeprecated'
+  - id: AC2
+    statement: mode() returns REQUIRED when isRequired() was true and OPTIONAL otherwise
+    test: 'Symfony\Component\Console\Tests\Input\InputArgumentTest::testModeMatchesLegacyAccessor'
+  - id: AC3
+    statement: mode() executes without emitting a deprecation
+    test: 'Symfony\Component\Console\Tests\Input\InputArgumentTest::testModeEmitsNoDeprecation'
