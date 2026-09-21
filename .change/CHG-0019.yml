@@ -1,0 +1,85 @@
+# Change record template: deprecation.
+#
+# Written by /plan-change, or drafted by the onboarding-starter automation
+# for a human to confirm. Read by bin/check-change.php, the CI gate, and
+# three audiences who never open the diff:
+#   Product reads acceptance statements and the release note.
+#   QA reads the named tests.
+#   DevOps reads the branch, the paths, and the dependency delta.
+#
+# Schema measured against CHG-0001.yml and CHG-0002.yml, both real, gated
+# records. Two fields disagreed between them and are flagged rather than
+# silently resolved:
+#   - license: present in CHG-0002 (license: MIT), absent from CHG-0001.
+#   - acceptance id prefix: "AC1".."AC3" in CHG-0001, "A1".."A3" in CHG-0002.
+# Pick one convention and update this comment once confirmed. A third record
+# should not introduce a third convention.
+
+id: CHG-0019                         # next unused number, or the GitHub
+                                      # issue number for an automation draft
+
+change_type: deprecation             # bug_fix | feature | deprecation
+
+owner: "@chalasr"                    # resolved from .github/CODEOWNERS by
+                                      # most specific match. Do not type this
+                                      # from memory or carry it over from
+                                      # another record.
+
+issues: "Fix #19"                    # the reported issue, verbatim into
+                                      # the PR table's Issues row
+                                      # (bin/pr-body.php:61). Quote it: the
+                                      # space before # makes YAML read the
+                                      # rest as a comment, leaving "Fix".
+                                      # Several go in one string,
+                                      # "Fix #1, Fix #2"; a list renders as
+                                      # "Array". Omit if none exists and
+                                      # explain in the release note.
+
+# license: MIT                       # UNCONFIRMED, see header. No check
+                                      # (C1-C5) reads this field today. If it
+                                      # tracks the license of a dependency
+                                      # newly introduced by the change, for
+                                      # cross reference against C4, say so
+                                      # here once decided; otherwise drop
+                                      # this line entirely.
+
+release_note: >
+  Drafted by automation from issue #19 body as a stand-in for /plan-change step 1:
+  While reviewing a PR from a new hire, I noticed InputArgument::isRequired()
+  and InputArgument::isArray() make a caller ask two separate yes or no
+  questions about the same underlying thing: how the argument expects its
+  value. Console just went through the same cleanup on InputOption
+  (isValueRequired() / isValueOptional() collapsed into a single
+  valueMode()). Feels like the same shape applies here, but I haven't scoped
+  it.
+
+target:
+  component: Console
+  branch: "8.2"                      # Ask. Do not derive: the maintained
+                                      # branch set is not machine derivable
+                                      # (/plan-change step 5, DECISIONS.md).
+                                      # A drafted record must mark this as an
+                                      # assumption pending confirmation, not
+                                      # a decision.
+  paths:
+    - "src/Symfony/Component/Console/**"
+    - "UPGRADE-8.2.md"               # Required alongside the component: C2
+                                      # demands this file and C4 forbids
+                                      # anything undeclared, so both checks
+                                      # fail unless the record names it.
+
+deprecates:
+  symbol: 'Symfony\Component\Console\Input\InputArgument::isRequired()'
+  replacement: 'Symfony\Component\Console\Input\InputArgument::valueMode()'
+  since: "8.2"                       # must match target.branch
+
+acceptance:
+  - id: AC1                          # see prefix note in header
+    statement: Calling isRequired() emits a deprecation naming valueMode()
+    test: 'Symfony\Component\Console\Tests\Input\InputArgumentTest::testIsRequiredIsDeprecated'
+  - id: AC2
+    statement: valueMode() returns the expected mode representing argument requirement and arrayness
+    test: 'Symfony\Component\Console\Tests\Input\InputArgumentTest::testValueMode'
+  - id: AC3
+    statement: valueMode() executes without emitting a deprecation
+    test: 'Symfony\Component\Console\Tests\Input\InputArgumentTest::testValueModeEmitsNoDeprecation'
