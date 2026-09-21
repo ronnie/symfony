@@ -1,0 +1,57 @@
+# Change record. Drafted by the onboarding-starter automation from
+# issue #20 (Dana Okafor), as a stand-in for /plan-change step 1. A human
+# must confirm the assumptions marked below before /deprecate runs.
+#
+# Product reads acceptance statements and the release note.
+# QA reads the named tests.
+# DevOps reads the branch, the paths and the dependency delta.
+#
+# Conventions picked from the two gated records, pending confirmation:
+#   - license omitted, as in CHG-0001 (CHG-0002 set license: MIT)
+#   - acceptance ids AC1..AC3, as in CHG-0001 (CHG-0002 used A1..A3)
+
+id: CHG-0020
+
+change_type: deprecation
+
+owner: "@chalasr"
+
+issues: "Fix #20"
+
+release_note: >
+  Drafted from issue #20, as a stand-in for asking the requester directly.
+  Table::setStyle() accepts either a TableStyle object or a bare string
+  naming a built-in style. The string form has no compile-time safety and
+  silently falls back to a default if the name is misspelled. Passing a
+  string style name is deprecated in favor of requiring a TableStyle object.
+
+target:
+  component: Console
+  # ASSUMPTION, pending confirmation. Deprecations target the development
+  # branch, which is 8.2 today. Not derived from releases.json: that file
+  # exposes three overlapping keys, and C3 only checks that this value
+  # matches the pull request base.
+  branch: "8.2"
+  paths:
+    - "src/Symfony/Component/Console/**"
+    - "UPGRADE-8.2.md"
+
+deprecates:
+  # ASSUMPTION, pending confirmation. Table::setStyle() accepts TableStyle|string.
+  # The issue requests deprecating the string argument path in favor of requiring
+  # a TableStyle object. Confirm whether symbol should specify the string signature
+  # or if Table::getStyleDefinition() / TableStyle should be named as replacement.
+  symbol: 'Symfony\Component\Console\Helper\Table::setStyle()'
+  replacement: 'Symfony\Component\Console\Helper\TableStyle'
+  since: "8.2"
+
+acceptance:
+  - id: AC1
+    statement: Calling setStyle() with a string style name emits a deprecation
+    test: 'Symfony\Component\Console\Tests\Helper\TableTest::testSetStyleWithStringIsDeprecated'
+  - id: AC2
+    statement: Calling setStyle() with a TableStyle instance emits no deprecation
+    test: 'Symfony\Component\Console\Tests\Helper\TableTest::testSetStyleWithTableStyleEmitsNoDeprecation'
+  - id: AC3
+    statement: Table rendering with a TableStyle instance matches expected output
+    test: 'Symfony\Component\Console\Tests\Helper\TableTest::testSetStyleWithTableStyleMatchesRendering'
