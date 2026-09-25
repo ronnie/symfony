@@ -1,0 +1,63 @@
+# Change record template: deprecation.
+#
+# Written by /plan-change, or drafted by the onboarding-starter automation
+# for a human to confirm. Read by bin/check-change.php, the CI gate, and
+# three audiences who never open the diff:
+#   Product reads acceptance statements and the release note.
+#   QA reads the named tests.
+#   DevOps reads the branch, the paths, and the dependency delta.
+#
+# Schema measured against CHG-0001.yml and CHG-0002.yml, both real, gated
+# records. Two fields disagreed between them and are flagged rather than
+# silently resolved:
+#   - license: present in CHG-0002 (license: MIT), absent from CHG-0001.
+#   - acceptance id prefix: "AC1".."AC3" in CHG-0001, "A1".."A3" in CHG-0002.
+# Pick one convention and update this comment once confirmed. A third record
+# should not introduce a third convention.
+
+id: CHG-0025
+
+change_type: deprecation
+
+owner: "@chalasr"
+
+issues: "Fix #25"
+
+release_note: >
+  Drafted by automation from issue #25 body as a stand-in for /plan-change step 1:
+  You can hand OutputFormatterStyle either a named color like 'red' or a
+  raw ANSI code, and both work with no warning either way. That's flexible,
+  but it also means our style definitions across commands are inconsistent,
+  and nobody agrees on the "right" way to do it. Passing raw ANSI codes
+  directly to OutputFormatterStyle should be deprecated in favor of using
+  named colors.
+
+target:
+  component: Console
+  # ASSUMPTION, pending confirmation. Deprecations target the development
+  # branch, which is 8.2 today. Not derived: the maintained branch set is
+  # not machine derivable (/plan-change step 5).
+  branch: "8.2"
+  paths:
+    - "src/Symfony/Component/Console/**"
+    - "UPGRADE-8.2.md"
+
+deprecates:
+  # ASSUMPTION, pending confirmation. OutputFormatterStyle accepts either named
+  # color strings or raw ANSI codes in setForeground() and setBackground().
+  # The issue requests deprecating raw ANSI code arguments in favor of named colors.
+  # Confirm whether symbol should specify setForeground(), setBackground(), or Color.
+  symbol: 'Symfony\Component\Console\Formatter\OutputFormatterStyle::setForeground()'
+  replacement: 'Symfony\Component\Console\Color'
+  since: "8.2"
+
+acceptance:
+  - id: AC1
+    statement: Calling setForeground() with a raw ANSI code emits a deprecation
+    test: 'Symfony\Component\Console\Tests\Formatter\OutputFormatterStyleTest::testSetForegroundWithRawAnsiCodeIsDeprecated'
+  - id: AC2
+    statement: Calling setBackground() with a raw ANSI code emits a deprecation
+    test: 'Symfony\Component\Console\Tests\Formatter\OutputFormatterStyleTest::testSetBackgroundWithRawAnsiCodeIsDeprecated'
+  - id: AC3
+    statement: Setting colors using valid color names emits no deprecation
+    test: 'Symfony\Component\Console\Tests\Formatter\OutputFormatterStyleTest::testNamedColorsEmitNoDeprecation'
