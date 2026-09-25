@@ -1,0 +1,62 @@
+# Change record template: deprecation.
+#
+# Written by /plan-change, or drafted by the onboarding-starter automation
+# for a human to confirm. Read by bin/check-change.php, the CI gate, and
+# three audiences who never open the diff:
+#   Product reads acceptance statements and the release note.
+#   QA reads the named tests.
+#   DevOps reads the branch, the paths, and the dependency delta.
+#
+# Schema measured against CHG-0001.yml and CHG-0002.yml, both real, gated
+# records. Two fields disagreed between them and are flagged rather than
+# silently resolved:
+#   - license: present in CHG-0002 (license: MIT), absent from CHG-0001.
+#   - acceptance id prefix: "AC1".."AC3" in CHG-0001, "A1".."A3" in CHG-0002.
+# Pick one convention and update this comment once confirmed. A third record
+# should not introduce a third convention.
+
+id: CHG-0026
+
+change_type: deprecation
+
+owner: "@chalasr"
+
+issues: "Fix #26"
+
+# license: MIT
+
+release_note: >
+  Drafted by automation from issue #26 body as a stand-in for /plan-change step 1:
+  `ConsoleLogger` accepts a log level to output level mapping both as a
+  constructor argument and through a setter called later. Our CI wrapper does
+  both in different places and it's genuinely unclear which one wins if they
+  disagree. This is exactly the kind of redundant configuration surface that
+  should collapse to one path with a deprecation on the other.
+
+target:
+  component: Console
+  # ASSUMPTION, pending confirmation. Deprecations target the development
+  # branch, which is 8.2 today (/plan-change step 5). Not derived from
+  # releases.json: that file exposes three overlapping keys, and C3 only checks
+  # that this value matches the pull request base.
+  branch: "8.2"
+  paths:
+    - "src/Symfony/Component/Console/**"
+    - "UPGRADE-8.2.md"
+
+deprecates:
+  # ASSUMPTION, pending confirmation. ConsoleLogger currently accepts verbosityLevelMap
+  # in its constructor and has no setter in tree; if a setter exists or was proposed/used,
+  # or conversely if the setter was intended to be deprecated in favor of constructor injection,
+  # confirm the exact symbol and replacement.
+  symbol: 'Symfony\Component\Console\Logger\ConsoleLogger::setVerbosityLevelMap()'
+  replacement: 'Symfony\Component\Console\Logger\ConsoleLogger::__construct()'
+  since: "8.2"
+
+acceptance:
+  - id: AC1
+    statement: Calling ConsoleLogger::setVerbosityLevelMap() emits a deprecation in favor of constructor injection
+    test: 'Symfony\Component\Console\Tests\Logger\ConsoleLoggerTest::testSetVerbosityLevelMapIsDeprecated'
+  - id: AC2
+    statement: Constructor injection sets verbosity level map without emitting deprecation
+    test: 'Symfony\Component\Console\Tests\Logger\ConsoleLoggerTest::testConstructorVerbosityLevelMapEmitsNoDeprecation'
